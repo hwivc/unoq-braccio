@@ -241,6 +241,16 @@ ros2 topic hz /clock              # arm not moving? the sim clock must be runnin
 ros2 control list_controllers
 ```
 
+By default the overhead camera finds cubes with the Edge Impulse `cube` model
+(see [test/README.md](test/README.md)), not colour blobs; colour is decided
+separately by sampling pixels inside each box the model returns. Swap the
+model, or fall back to plain colour detection, with launch arguments:
+
+```bash
+ros2 launch unoq_braccio_bringup sim.launch.py model_path:=/path/to/model.lite
+ros2 launch unoq_braccio_bringup sim.launch.py detector_backend:=color_blob
+```
+
 The scene has red, blue and yellow 30 mm cubes and green, cyan and magenta bins
 (different from the cube colors so the camera cannot confuse them), all within
 the arm's reach. Check the layout without ROS or Gazebo with
@@ -349,6 +359,7 @@ UNO Q. `app_lab/braccio_web_agent` vendors the same brick source into its
 | Windows / macOS / Linux setup | [docs/platform-setup.md](docs/platform-setup.md) |
 | Camera vision | [docs/vision.md](docs/vision.md) |
 | Gazebo simulation | [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_sim/README.md) |
+| Edge Impulse cube detector, offline test tool | [test/README.md](test/README.md) |
 | Edge Impulse integration | [edge_impulse/README.md](edge_impulse/README.md) |
 | Edge Impulse data capture | [edge_impulse/data_capture.md](edge_impulse/data_capture.md) |
 | Edge Impulse Linux setup | [edge_impulse/linux_setup.md](edge_impulse/linux_setup.md) |

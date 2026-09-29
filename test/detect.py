@@ -211,12 +211,21 @@ def run_images(detector: CubeDetector, names, show: bool, save: bool, debug: boo
                 break
 
 
+# Keys that nudge the live confidence threshold, and by how much.
+CONF_STEP_KEYS = {
+    ord("+"): 0.01, ord("="): 0.01, ord("]"): 0.05,
+    ord("-"): -0.01, ord("_"): -0.01, ord("["): -0.05,
+}
+
+
 def run_live(detector: CubeDetector, camera: int) -> None:
     backend = cv2.CAP_DSHOW if sys.platform == "win32" else cv2.CAP_ANY
     cap = cv2.VideoCapture(camera, backend)
     if not cap.isOpened():
         sys.exit(f"Could not open camera {camera}. Try --camera 1.")
-    print("Live: q or Esc quits, s saves a snapshot")
+    print("Live: q/Esc quits, s saves a snapshot")
+    print("      [ / ] adjust the confidence threshold by 0.05, - / + by 0.01")
+    print(f"      starting threshold: {detector.conf:.2f}")
     fps, last = 0.0, time.perf_counter()
     snapshots = 0
     try:
@@ -235,6 +244,8 @@ def run_live(detector: CubeDetector, camera: int) -> None:
             annotated = draw(frame, detections)
             cv2.putText(annotated, f"{len(detections)} cube(s)  {infer_ms:.0f} ms  {fps:.0f} fps",
                         (10, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
+            cv2.putText(annotated, f"conf >= {detector.conf:.2f}  ([ ] or - + to adjust)",
+                        (10, 56), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 255), 2, cv2.LINE_AA)
             cv2.imshow("cube detector (q to quit)", fit_to_screen(annotated))
             key = cv2.waitKey(1) & 0xFF
             if key in (ord("q"), 27):
@@ -245,6 +256,9 @@ def run_live(detector: CubeDetector, camera: int) -> None:
                 cv2.imwrite(str(target), annotated)
                 print(f"saved {target}")
                 snapshots += 1
+            elif key in CONF_STEP_KEYS:
+                detector.conf = round(min(1.0, max(0.0, detector.conf + CONF_STEP_KEYS[key])), 2)
+                print(f"confidence threshold -> {detector.conf:.2f}")
     finally:
         cap.release()
         cv2.destroyAllWindows()

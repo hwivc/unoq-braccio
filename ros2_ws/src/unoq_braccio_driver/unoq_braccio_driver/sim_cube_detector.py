@@ -14,6 +14,14 @@ Result::
 
 x/y are table coordinates in metres. ``sector`` is ``pick``, a bin name, or
 ``none``. Bins are found by their own colours (not cube colours).
+
+Finding *where the cubes are* and deciding *what colour each one is* are two
+separate steps here on purpose. Where the cubes are comes from a swappable
+``CubeBoxDetector`` (default: the Edge Impulse model in the repo root; see
+``cube_model_backend.py``) - a single-class "cube" model does not report
+colour, so colour is decided afterwards by sampling pixels inside each box.
+Swapping in a different model only ever means changing the ``detector_backend``
+/ ``model_path`` parameters below; nothing else in this file changes.
 """
 
 import json
@@ -26,7 +34,8 @@ from sensor_msgs.msg import CameraInfo, Image
 from std_msgs.msg import String
 
 from unoq_braccio_driver import braccio_workspace as ws
-from unoq_braccio_driver.color_vision import find_blobs, image_to_rgb, to_hsv
+from unoq_braccio_driver.color_vision import best_color, find_blobs, image_to_rgb, to_hsv
+from unoq_braccio_driver.cube_model_backend import create_cube_detector
 
 # Re-exported for older imports / tests.
 pixel_to_table = ws.pixel_to_table
@@ -58,12 +67,21 @@ class SimCubeDetector(Node):
         self.declare_parameter("window_s", 1.5)
         self.declare_parameter("min_samples", 5)
         self.declare_parameter("cluster_mm", 12.0)
+        # Cube-finding backend. See cube_model_backend.py: "edge_impulse" (default)
+        # or "color_blob". model_path="" searches the repo for a .lite/.tflite file.
+        self.declare_parameter("detector_backend", "edge_impulse")
+        self.declare_parameter("model_path", "")
+        self.declare_parameter("model_conf", 0.3)
+        self.declare_parameter("model_iou", 0.45)
+        # How much of a box must match a colour range to accept that colour.
+        self.declare_parameter("color_min_frac", 0.15)
 
         self.info = None
         self.window_end = 0.0
         self.color_filter = ""
         self.cube_samples = {}   # colour -> [(x, y)]
         self.bin_samples = {}    # bin name -> [(x, y)]
+        self.cube_detector = None  # built lazily, once camera_info gives us fx/height
 
         self.create_subscription(CameraInfo, "/vision/overhead/camera_info", self.on_info, 10)
         self.create_subscription(Image, "/vision/overhead/image_raw", self.on_image, 5)
@@ -96,18 +114,32 @@ class SimCubeDetector(Node):
         cam_y = float(self.get_parameter("camera_y").value)
         cam_z = float(self.get_parameter("camera_z").value)
 
-        # Pixel area of a cube / bin top, from the actual intrinsics.
-        cube_px = ws.CUBE_SIZE * fx / (cam_z - ws.CUBE_CENTRE_Z)
-        cube_lo, cube_hi = 0.4 * cube_px ** 2, 2.5 * cube_px ** 2
+        if self.cube_detector is None:
+            self.cube_detector = create_cube_detector(
+                backend=str(self.get_parameter("detector_backend").value),
+                model_path=str(self.get_parameter("model_path").value),
+                conf=float(self.get_parameter("model_conf").value),
+                iou=float(self.get_parameter("model_iou").value),
+                cube_size_m=ws.CUBE_SIZE,
+                camera_fx=fx,
+                camera_height_m=cam_z - ws.CUBE_CENTRE_Z,
+                logger=self.get_logger(),
+            )
 
-        for color, ranges in ws.CUBE_HSV.items():
+        # The model (or the colour-blob fallback) only says "a cube is here";
+        # colour comes from sampling pixels inside the box it returned.
+        min_frac = float(self.get_parameter("color_min_frac").value)
+        for x1, y1, x2, y2, score in self.cube_detector.find_cubes(rgb):
+            xi1, yi1 = max(0, int(x1)), max(0, int(y1))
+            xi2, yi2 = min(rgb.shape[1], int(round(x2))), min(rgb.shape[0], int(round(y2)))
+            color, frac = best_color(hsv[yi1:yi2, xi1:xi2], ws.CUBE_HSV)
+            if color is None or frac < min_frac:
+                continue
             if self.color_filter and color != self.color_filter:
                 continue
-            for u, v, _ in find_blobs(hsv, ranges, cube_lo, cube_hi):
-                x, y = ws.pixel_to_table(
-                    u, v, fx, fy, cx, cy, cam_x, cam_y, cam_z - ws.CUBE_CENTRE_Z
-                )
-                self.cube_samples.setdefault(color, []).append((x, y))
+            u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+            x, y = ws.pixel_to_table(u, v, fx, fy, cx, cy, cam_x, cam_y, cam_z - ws.CUBE_CENTRE_Z)
+            self.cube_samples.setdefault(color, []).append((x, y))
 
         for bin_ in ws.BINS:
             bin_px = bin_.size * fx / (cam_z - bin_.height)

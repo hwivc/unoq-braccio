@@ -70,6 +70,26 @@ python detect.py --live           # live webcam
 In the image window press any key for the next image, `q` or `Esc` to quit. In
 live mode `q` or `Esc` quits and `s` saves a snapshot to `output/`.
 
+### Live threshold tuning
+
+In `--live` mode the confidence threshold (`--conf`) can be changed while the
+camera is running, without restarting:
+
+| Key | Effect |
+| --- | --- |
+| `]` | Raise the threshold by 0.05 (fewer, more confident boxes) |
+| `[` | Lower the threshold by 0.05 (more boxes, more false positives) |
+| `+` / `=` | Raise the threshold by 0.01 (fine adjustment) |
+| `-` / `_` | Lower the threshold by 0.01 (fine adjustment) |
+
+The current value is drawn on the video (`conf >= 0.30`) and printed to the
+terminal each time it changes. Start from `--conf` on the command line and
+nudge it up while watching the feed until bad detections (empty background,
+shadows, the arm itself) drop out but the real cube still shows. That value is
+the one to use for `--conf` next time, and later for whatever score threshold
+the pick-and-place pipeline applies to `/edge_impulse/label` or its detections
+topic.
+
 Options:
 
 | Option | Meaning |

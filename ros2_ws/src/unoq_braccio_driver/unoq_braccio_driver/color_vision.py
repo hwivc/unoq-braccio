@@ -23,6 +23,30 @@ def to_hsv(rgb):
     return cv2.cvtColor(np.ascontiguousarray(rgb), cv2.COLOR_RGB2HSV)
 
 
+def best_color(hsv_crop, ranges_by_color):
+    """Colour whose HSV range covers the most of ``hsv_crop``.
+
+    Used to classify the colour *inside* a box a cube-finding model already
+    returned (the model finds "a cube"; this decides which one). Returns
+    ``(name, fraction)``, or ``(None, 0.0)`` for an empty crop.
+    """
+    import cv2
+
+    total = hsv_crop.shape[0] * hsv_crop.shape[1]
+    if total == 0:
+        return None, 0.0
+    best_name, best_frac = None, 0.0
+    for name, ranges in ranges_by_color.items():
+        mask = None
+        for low, high in ranges:
+            part = cv2.inRange(hsv_crop, np.array(low), np.array(high))
+            mask = part if mask is None else cv2.bitwise_or(mask, part)
+        frac = float(np.count_nonzero(mask)) / total
+        if frac > best_frac:
+            best_name, best_frac = name, frac
+    return best_name, best_frac
+
+
 def find_blobs(hsv, ranges, min_area, max_area):
     """Blobs inside any HSV range: list of (u, v, area) in pixels.
 

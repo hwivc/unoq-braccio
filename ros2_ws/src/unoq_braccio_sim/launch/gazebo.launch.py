@@ -12,6 +12,7 @@ from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import Command, LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
 from unoq_braccio_driver.braccio_workspace import CAMERA_XYZ
@@ -50,6 +51,20 @@ def generate_launch_description():
     detector = DeclareLaunchArgument(
         "detector", default_value="true",
         description="Start sim_cube_detector on the overhead camera.",
+    )
+    detector_backend = DeclareLaunchArgument(
+        "detector_backend", default_value="edge_impulse",
+        description="Cube-finding backend: 'edge_impulse' (default) or 'color_blob'. "
+        "See unoq_braccio_driver/cube_model_backend.py.",
+    )
+    model_path = DeclareLaunchArgument(
+        "model_path", default_value="",
+        description="Path to a .lite/.tflite model. Empty searches the repository "
+        "for one (preferring a float32 model), then EDGE_IMPULSE_CUBE_MODEL.",
+    )
+    model_conf = DeclareLaunchArgument(
+        "model_conf", default_value="0.3",
+        description="Minimum score for a model detection to count as a cube.",
     )
 
     gz_sim = IncludeLaunchDescription(
@@ -127,7 +142,11 @@ def generate_launch_description():
         package="unoq_braccio_driver",
         executable="sim_cube_detector",
         name="sim_cube_detector",
-        parameters=[sim_time],
+        parameters=[sim_time, {
+            "detector_backend": LaunchConfiguration("detector_backend"),
+            "model_path": LaunchConfiguration("model_path"),
+            "model_conf": ParameterValue(LaunchConfiguration("model_conf"), value_type=float),
+        }],
         condition=IfCondition(LaunchConfiguration("detector")),
         output="screen",
     )
@@ -173,6 +192,9 @@ def generate_launch_description():
             fallback_sim,
             rviz_arg,
             detector,
+            detector_backend,
+            model_path,
+            model_conf,
             gz_sim,
             bridge,
             state_publisher,

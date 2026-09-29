@@ -19,11 +19,62 @@ It includes:
 - `ros2_control` metadata and controller configuration.
 - A `ros_gz_bridge` for `/clock` and both camera streams.
 - `sim_cube_detector`: the overhead camera. It is the only source of cube and
-  bin positions, and it is request-driven (idle until asked).
+  bin positions, and it is request-driven (idle until asked). Finding *where*
+  a cube is comes from a swappable model backend (default: the Edge Impulse
+  `cube` detector); see [Cube-finding model](#cube-finding-model) below.
 - `sim_gripper_detector`: the gripper camera. Detection only (is a cube of
   this colour in view, how much of the image it fills); never positions.
 - `workspace_markers` and `rviz/braccio.rviz`: RViz view of the robot, both
   camera feeds, the sectors, detected cubes and the task state.
+
+## Cube-finding model
+
+`sim_cube_detector` finds *where* a cube is with a swappable model backend
+(`ros2_ws/src/unoq_braccio_driver/unoq_braccio_driver/cube_model_backend.py`),
+then decides *what colour* it is separately by sampling the pixels inside the
+box the model returned (`color_vision.best_color`), because a single-class
+"cube" model does not report colour on its own.
+
+By default it uses the Edge Impulse model from `test/` (see
+[test/README.md](../../../test/README.md)): a `.lite`/`.tflite` file with one
+class, `cube`. It needs a TFLite runtime in the same Python environment ROS
+runs from:
+
+```bash
+pip install ai-edge-litert
+# or, if that has no wheel for your platform:
+pip install tflite-runtime
+```
+
+The model file itself is not committed (it is large; `.lite`/`.tflite` are
+git-ignored). Put one in the repository root, in `test/`, or in `test/models/`
+and it is found automatically (a `float32` model is preferred over `int8` if
+both are present); or point at it directly:
+
+```bash
+ros2 launch unoq_braccio_bringup sim.launch.py model_path:=/path/to/model.lite
+# or
+export EDGE_IMPULSE_CUBE_MODEL=/path/to/model.lite
+```
+
+Launch arguments:
+
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `detector_backend` | `edge_impulse` | `edge_impulse` or `color_blob` (no model, HSV blobs) |
+| `model_path` | `""` | Explicit model path; empty searches for one |
+| `model_conf` | `0.3` | Minimum score for a detection to count as a cube |
+
+If no model can be found or loaded (missing file, no TFLite runtime, wrong
+format), `sim_cube_detector` logs a warning and falls back to `color_blob`
+automatically, so the simulation still runs. Use
+`detector_backend:=color_blob` to force that path deliberately, for example to
+compare a trained model against plain colour detection.
+
+To use a different model later, nothing here changes except `model_path` (and
+`detector_backend` for a model whose output is not the same `[N, 5]`
+`x1, y1, x2, y2, score` shape — see `cube_model_backend.py` for adding a new
+backend class in that case).
 
 ## Install Dependencies
 
