@@ -47,9 +47,18 @@ Visualization Manager:
       Displays:
         - Class: rviz_default_plugins/Image
           Name: Overhead camera
-          Enabled: true
+          Enabled: false
           Topic:
             Value: /vision/overhead/image_raw
+            Depth: 5
+            Durability Policy: Volatile
+            Reliability Policy: Reliable
+          Normalize Range: true
+        - Class: rviz_default_plugins/Image
+          Name: Overhead detections (live)
+          Enabled: true
+          Topic:
+            Value: /vision/overhead/image_detections
             Depth: 5
             Durability Policy: Volatile
             Reliability Policy: Reliable

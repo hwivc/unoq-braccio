@@ -18,14 +18,61 @@ It includes:
   magenta.
 - `ros2_control` metadata and controller configuration.
 - A `ros_gz_bridge` for `/clock` and both camera streams.
-- `sim_cube_detector`: the overhead camera. It is the only source of cube and
-  bin positions, and it is request-driven (idle until asked). Finding *where*
-  a cube is comes from a swappable model backend (default: the Edge Impulse
-  `cube` detector); see [Cube-finding model](#cube-finding-model) below.
+- `sim_cube_detector`: the overhead camera, and the only source of cube and
+  bin positions. It runs continuously (not request-driven) and only trusts a
+  detection once it has held steady for a brief moment; see
+  [Live detection](#live-detection) below. Finding *where* a cube is comes
+  from a swappable model backend (default: the Edge Impulse `cube` detector);
+  see [Cube-finding model](#cube-finding-model) below.
 - `sim_gripper_detector`: the gripper camera. Detection only (is a cube of
   this colour in view, how much of the image it fills); never positions.
 - `workspace_markers` and `rviz/braccio.rviz`: RViz view of the robot, both
-  camera feeds, the sectors, detected cubes and the task state.
+  camera feeds (including the overhead feed with live detection boxes drawn
+  on it), the sectors, detected cubes and the task state.
+
+## Live detection
+
+`sim_cube_detector` runs the cube-finding model on every overhead-camera
+frame, all the time - there is no separate "start detecting" step. Two things
+come out of that continuously:
+
+- **`/vision/overhead/image_detections`** (`sensor_msgs/Image`): the overhead
+  feed with a box drawn around every cube-shaped thing the model finds, and
+  a `colour score` label - or `cube? score` in grey if a box could not be
+  classified to a colour confidently. This is what RViz shows by default (the
+  plain `/vision/overhead/image_raw` display is still there, just switched
+  off, in case you want the undecorated feed instead).
+- **`/vision/cube_target`** (`std_msgs/String`, JSON): only positions that have
+  been seen *consistently* for `confirm_window_s` (default 0.5 s) make it into
+  this message, republished at `publish_rate_hz` (default 5 Hz). A single
+  stray frame - a shadow, a reflection, the arm passing through - is not
+  enough to move it; this is what `pick_place_demo` and `workspace_markers`
+  both read.
+
+So a box can flicker on screen without ever reaching `/vision/cube_target` -
+that is the point: instant visual feedback for tuning, a brief but real
+confirmation delay before anything is trusted enough to plan a pick around.
+Tune the trade-off with (settable at launch or with `ros2 param set`):
+
+| Parameter | Default | Meaning |
+| --- | --- | --- |
+| `confirm_window_s` | `0.5` | How long a position must persist before it is trusted |
+| `min_samples` | `3` | How many of the frames in that window must agree |
+| `cluster_mm` | `12.0` | How close two samples must be to count as "the same cube" |
+| `publish_rate_hz` | `5.0` | How often the confirmed result is republished |
+| `publish_annotated` | `true` | Whether to publish `image_detections` at all |
+
+`/vision/detect_request` (`std_msgs/String`) still exists, but its job
+changed: publishing a colour on it narrows which colour(s) show up in
+`/vision/cube_target` from then on - it does not start or stop detection,
+which is now always running. The rolling history for every colour keeps
+building in the background regardless of the filter, so switching it back
+does not need to wait out a fresh window:
+
+```bash
+ros2 topic pub --once /vision/detect_request std_msgs/msg/String "{data: blue}"
+ros2 topic pub --once /vision/detect_request std_msgs/msg/String "{data: ''}"  # all colours again
+```
 
 ## Cube-finding model
 

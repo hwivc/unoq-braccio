@@ -215,7 +215,13 @@ ros2 topic echo /task/state       # IDLE, DETECTING, GRASP, ... COMPLETE
 ```
 
 RViz opens with the launch (robot, both camera feeds, sectors, detected cubes
-and task state). Use `rviz:=false` to skip it.
+and task state). Use `rviz:=false` to skip it. The overhead camera panel shows
+**live detection boxes** by default (`/vision/overhead/image_detections`) - the
+detector runs continuously, not on request; a box only reaches
+`/vision/cube_target` (and so the arm) once it has held steady for a brief
+moment (`confirm_window_s`, default 0.5 s). See
+[Live detection](ros2_ws/src/unoq_braccio_sim/README.md#live-detection) for the
+tuning parameters.
 
 **Launch options:**
 
@@ -228,12 +234,13 @@ ros2 launch unoq_braccio_bringup sim.launch.py fallback_sim:=true   # debug only
 **Camera feeds and checks:**
 
 ```text
-/vision/overhead/image_raw   fixed overhead camera
-/vision/gripper/image_raw    gripper-mounted camera
-/vision/cube_target          overhead detections: cube + bin positions (JSON)
-/vision/gripper/detection    gripper camera colour check (JSON, no positions)
-/task/state                  task state machine
-/workspace/markers           RViz markers
+/vision/overhead/image_raw          fixed overhead camera, no boxes
+/vision/overhead/image_detections   same feed with live detection boxes drawn on it
+/vision/gripper/image_raw           gripper-mounted camera
+/vision/cube_target                 confirmed cube + bin positions (JSON)
+/vision/gripper/detection           gripper camera colour check (JSON, no positions)
+/task/state                         task state machine
+/workspace/markers                  RViz markers
 ```
 
 ```bash

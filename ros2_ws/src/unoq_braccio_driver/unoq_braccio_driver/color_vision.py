@@ -23,6 +23,21 @@ def to_hsv(rgb):
     return cv2.cvtColor(np.ascontiguousarray(rgb), cv2.COLOR_RGB2HSV)
 
 
+def rgb_to_image_msg(rgb, header):
+    """HxWx3 uint8 RGB array -> sensor_msgs/Image, copying stamp/frame_id from ``header``."""
+    from sensor_msgs.msg import Image
+    from std_msgs.msg import Header
+
+    msg = Image()
+    msg.header = Header(stamp=header.stamp, frame_id=header.frame_id)
+    msg.height, msg.width = rgb.shape[:2]
+    msg.encoding = "rgb8"
+    msg.is_bigendian = 0
+    msg.step = msg.width * 3
+    msg.data = np.ascontiguousarray(rgb, dtype=np.uint8).tobytes()
+    return msg
+
+
 def best_color(hsv_crop, ranges_by_color):
     """Colour whose HSV range covers the most of ``hsv_crop``.
 
