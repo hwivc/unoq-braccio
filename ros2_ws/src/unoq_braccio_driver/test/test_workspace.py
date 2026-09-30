@@ -18,11 +18,15 @@ from unoq_braccio_driver.braccio_kinematics import (  # noqa: E402
     GRIPPER_CLOSED,
     GRIPPER_OPEN,
     forward_kinematics,
+    servo_to_urdf,
     solve_ik,
 )
 
 WORLD = os.path.join(
     os.path.dirname(__file__), "..", "..", "unoq_braccio_sim", "worlds", "workspace.world"
+)
+URDF = os.path.join(
+    os.path.dirname(__file__), "..", "..", "unoq_braccio_sim", "urdf", "braccio.urdf.xacro"
 )
 
 
@@ -94,6 +98,33 @@ def _hue_gaps():
 
 def test_cube_and_bin_hue_ranges_do_not_overlap():
     _hue_gaps()
+
+
+def test_left_gripper_mirrors_right_within_its_urdf_limits():
+    """Regression test for a real bug: a wrong LEFT_GRIPPER_OFFSET sent the
+    left finger's target below its own URDF joint limit at the closed end.
+    ros2_control clamped it there, so only the right finger actually moved -
+    one finger poking a cube instead of two fingers pinching it.
+
+    This reads the left_gripper joint's limits straight from the URDF (not a
+    hardcoded copy of the numbers), so it fails the same way that bug did if
+    the offset formula or the URDF limits drift apart again.
+    """
+    xacro = open(URDF, encoding="utf-8").read()
+    joint = xacro[xacro.index('joint name="left_gripper"'):]
+    limit = joint[joint.index("<limit") : joint.index("/>", joint.index("<limit"))]
+    lower = float(limit[limit.index('lower="') + 7 :].split('"')[0])
+    upper = float(limit[limit.index('upper="') + 7 :].split('"')[0])
+
+    previous = None
+    for servo in range(GRIPPER_OPEN, 111):
+        angle = servo_to_urdf("left_gripper", servo)
+        assert lower - 1e-6 <= angle <= upper + 1e-6, (servo, angle, lower, upper)
+        if previous is not None:
+            # "left = offset - right", and the right angle increases as it closes,
+            # so the left angle must decrease over the same servo range.
+            assert angle <= previous + 1e-9, "left angle must move monotonically as it closes"
+        previous = angle
 
 
 def test_arm_targets_reachable_and_ik_matches_urdf():

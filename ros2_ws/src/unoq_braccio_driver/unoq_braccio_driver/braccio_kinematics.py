@@ -35,7 +35,16 @@ GRIPPER_CLOSED = 95         # tune for the 30 mm cube; 110 is fully shut
 # Gripper joint range in the URDF and the mirrored left finger.
 GRIPPER_RAD_MIN = 0.1750
 GRIPPER_RAD_MAX = 1.2741
-LEFT_GRIPPER_OFFSET = GRIPPER_RAD_MIN + GRIPPER_RAD_MAX  # left = offset - right
+# left = offset - right. The left_gripper joint's own URDF range is
+# [GRIPPER_RAD_MAX, 2*GRIPPER_RAD_MAX - GRIPPER_RAD_MIN], so this must be
+# 2*GRIPPER_RAD_MAX for "left = offset - right" to land inside it at both
+# ends (servo=10 -> left=GRIPPER_RAD_MAX; servo=110 -> left=GRIPPER_RAD_MIN's
+# mirror, GRIPPER_RAD_MAX-GRIPPER_RAD_MIN + GRIPPER_RAD_MAX). Using
+# GRIPPER_RAD_MIN + GRIPPER_RAD_MAX here (an earlier version of this file)
+# put the closed-end target below the joint's lower limit, so the controller
+# clamped the left finger there and only the right finger actually closed -
+# one finger poking a cube instead of two fingers pinching it.
+LEFT_GRIPPER_OFFSET = 2.0 * GRIPPER_RAD_MAX
 
 URDF_ARM_JOINTS = ["base", "shoulder", "elbow", "wrist_vertical", "wrist_rotation"]
 URDF_JOINT_NAMES = URDF_ARM_JOINTS + ["gripper", "left_gripper"]
