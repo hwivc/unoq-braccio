@@ -153,6 +153,37 @@ def test_gripper_fingers_mirror_each_other():
         previous_gap = gap
 
 
+def test_finger_pads_pinch_a_cube_flat():
+    """The finger collision pads are what actually holds a cube in Gazebo.
+    They must sit centred on the finger plates (y = 0, where the IK puts the
+    cube), be parallel when they first touch a 30 mm cube, and touch it just
+    before GRIPPER_CLOSED so the gripper squeezes rather than misses."""
+    xacro = open(URDF, encoding="utf-8").read()
+    faces = {}
+    for joint, link in (("gripper", "right_gripper_link"), ("left_gripper", "left_gripper_link")):
+        origin, rpy, axis, _, _ = _urdf_joint(xacro, joint)
+        start = xacro.index(f'<link name="{link}">')
+        col = ET.fromstring(xacro[xacro.index("<collision>", start) : xacro.index("</collision>", start) + 12])
+        cxyz = [float(v) for v in col.find("origin").get("xyz").split()]
+        cpitch = float(col.find("origin").get("rpy").split()[1])
+        size = [float(v) for v in col.find("geometry/box").get("size").split()]
+        assert abs(cxyz[1]) < 1e-6, f"{link} pad is off the finger plate"
+        for servo in range(GRIPPER_OPEN, 111):
+            angle = rpy[1] + axis[1] * servo_to_urdf(joint, servo)
+            corners = []
+            for u in (-size[0] / 2, size[0] / 2):
+                for v in (-size[2] / 2, size[2] / 2):
+                    lx = cxyz[0] + u * math.cos(cpitch) + v * math.sin(cpitch)
+                    lz = cxyz[2] - u * math.sin(cpitch) + v * math.cos(cpitch)
+                    corners.append(origin[0] + lx * math.cos(angle) + lz * math.sin(angle))
+            inner = min(abs(c) for c in corners)
+            faces.setdefault(servo, []).append((inner, math.degrees(angle + cpitch) % 180.0))
+    touch = next(s for s in range(GRIPPER_OPEN, 111) if faces[s][0][0] + faces[s][1][0] <= ws.CUBE_SIZE)
+    assert GRIPPER_CLOSED - 10 <= touch < GRIPPER_CLOSED, (touch, GRIPPER_CLOSED)
+    for x, pitch in faces[touch]:
+        assert abs(pitch - 90.0) < 3.0, f"pad not vertical at contact: {pitch:.1f} deg"
+
+
 def test_arm_targets_reachable_and_ik_matches_urdf():
     worst = 0.0
     targets = []

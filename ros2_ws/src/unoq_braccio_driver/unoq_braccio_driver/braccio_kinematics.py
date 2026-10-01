@@ -26,11 +26,14 @@ SHOULDER_HEIGHT = 0.102     # shoulder axis height above the ground
 UPPER_ARM = 0.125
 FOREARM = 0.125
 WRIST_LINK = 0.06           # wrist_vertical axis -> wrist_roll origin
-TIP_LENGTH = 0.10           # wrist_roll origin -> fingertip (approximate)
+# wrist_roll origin -> grasp point (the cube centre when gripping). The finger
+# meshes reach 0.130 along the tool, so a cube centred at 0.117 leaves the
+# fingertips ~2 mm above the table instead of driving them into it.
+TIP_LENGTH = 0.117
 TOOL_LENGTH = WRIST_LINK + TIP_LENGTH
 
 GRIPPER_OPEN = 10
-GRIPPER_CLOSED = 103        # tune for the 30 mm cube; 110 is fully shut
+GRIPPER_CLOSED = 95         # pads touch a 30 mm cube just before 90; 95 squeezes it
 
 # Gripper joint range in the URDF. The left finger uses the same range and
 # the same angle as the right one: its joint frame is flipped 180 degrees about
@@ -117,8 +120,8 @@ URDF_BASE_ORIGIN = (0.0, 0.0, 0.02)
 URDF_BASE_YAW = -math.pi / 2
 
 
-def forward_kinematics(servo_degrees, tip=(0.0, 0.0, TIP_LENGTH)):
-    """World position of the fingertip for the five arm servos."""
+def _tool_pose(servo_degrees):
+    """World position and rotation of the wrist_roll frame for the five arm servos."""
     rot = _rpy(0.0, 0.0, URDF_BASE_YAW)
     pos = list(URDF_BASE_ORIGIN)
     for (origin, rpy, axis), name, degrees in zip(
@@ -127,8 +130,32 @@ def forward_kinematics(servo_degrees, tip=(0.0, 0.0, TIP_LENGTH)):
         offset = _matvec(rot, origin)
         pos = [pos[i] + offset[i] for i in range(3)]
         rot = _matmul(_matmul(rot, _rpy(*rpy)), _axis_rotation(axis, servo_to_urdf(name, degrees)))
+    return pos, rot
+
+
+def forward_kinematics(servo_degrees, tip=(0.0, 0.0, TIP_LENGTH)):
+    """World position of the fingertip for the five arm servos."""
+    pos, rot = _tool_pose(servo_degrees)
     offset = _matvec(rot, tip)
     return [pos[i] + offset[i] for i in range(3)]
+
+
+def grasp_wrist_rotation(servo_degrees, object_yaw_deg=0.0):
+    """wrist_rotation that makes the fingers close square to an object's faces.
+
+    The fingers close along the wrist_roll frame's x axis. With wrist_rotation
+    fixed at 90 that axis follows the base angle, so a cube off to the side
+    gets pinched across its diagonal and slips out. This picks the roll
+    nearest 90 that lines the closing axis up with a face (any multiple of
+    90 degrees from ``object_yaw_deg``, the cube's yaw in the world).
+    """
+    servo = list(servo_degrees[:4]) + [90.0]
+    for _ in range(3):  # the tool is not exactly vertical: refine a couple of times
+        _, rot = _tool_pose(servo)
+        yaw = math.degrees(math.atan2(rot[1][0], rot[0][0]))
+        error = (yaw - object_yaw_deg + 45.0) % 90.0 - 45.0
+        servo[4] = max(0.0, min(180.0, servo[4] - error))
+    return int(round(servo[4]))
 
 
 # --- inverse kinematics -----------------------------------------------------

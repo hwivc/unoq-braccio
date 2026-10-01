@@ -23,7 +23,12 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from unoq_braccio_driver import braccio_workspace as ws
-from unoq_braccio_driver.braccio_kinematics import GRIPPER_CLOSED, GRIPPER_OPEN, solve_ik
+from unoq_braccio_driver.braccio_kinematics import (
+    GRIPPER_CLOSED,
+    GRIPPER_OPEN,
+    grasp_wrist_rotation,
+    solve_ik,
+)
 from unoq_braccio_driver.braccio_model import JOINT_NAMES, POSES
 
 
@@ -110,8 +115,8 @@ class PickPlaceDemo(Node):
         self.command.publish(msg)
         time.sleep(float(self.get_parameter("step_wait").value) if wait is None else wait)
 
-    def ik(self, x, y, z, gripper):
-        pose = solve_ik(x, y, z, gripper)
+    def ik(self, x, y, z, gripper, wrist_rotation=90):
+        pose = solve_ik(x, y, z, gripper, wrist_rotation)
         if pose is None:
             raise ValueError(f"unreachable target ({x:.3f}, {y:.3f}, {z:.3f})")
         return pose
@@ -165,14 +170,18 @@ class PickPlaceDemo(Node):
 
         bin_, bx, by = self.bin_target(color, scan)
         try:
-            above = self.ik(x, y, ws.HOVER_Z, GRIPPER_OPEN)
-            down = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_OPEN)
-            grip = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_CLOSED)
-            lift = self.ik(x, y, ws.HOVER_Z, GRIPPER_CLOSED)
-            over_bin = self.ik(bx, by, ws.HOVER_Z, GRIPPER_CLOSED)
-            into_bin = self.ik(bx, by, ws.release_z(bin_), GRIPPER_CLOSED)
-            release = self.ik(bx, by, ws.release_z(bin_), GRIPPER_OPEN)
-            retreat = self.ik(bx, by, ws.HOVER_Z, GRIPPER_OPEN)
+            # Roll the wrist so the fingers close square to the cube's faces
+            # (cubes sit axis-aligned) rather than across its diagonal, and
+            # keep that roll for the whole pick so the cube is not twisted.
+            roll = grasp_wrist_rotation(self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_OPEN))
+            above = self.ik(x, y, ws.HOVER_Z, GRIPPER_OPEN, roll)
+            down = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_OPEN, roll)
+            grip = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_CLOSED, roll)
+            lift = self.ik(x, y, ws.HOVER_Z, GRIPPER_CLOSED, roll)
+            over_bin = self.ik(bx, by, ws.HOVER_Z, GRIPPER_CLOSED, roll)
+            into_bin = self.ik(bx, by, ws.release_z(bin_), GRIPPER_CLOSED, roll)
+            release = self.ik(bx, by, ws.release_z(bin_), GRIPPER_OPEN, roll)
+            retreat = self.ik(bx, by, ws.HOVER_Z, GRIPPER_OPEN, roll)
         except ValueError as exc:
             self.publish_state(State.TARGET_UNREACHABLE, error=str(exc))
             return False
