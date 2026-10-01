@@ -291,6 +291,15 @@ ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=keyboard
 ros2 run unoq_braccio_driver manual_control --ros-args -p input_type:=keyboard
 ```
 
+**Option 3: Joint State Publisher GUI (Visual Sliders Window)**
+```bash
+# Launch the visual sliders window (forwarding movements directly to the arm):
+ros2 launch unoq_braccio_bringup joint_state_publisher_gui.launch.py
+
+# If you also want a standalone RViz window:
+ros2 launch unoq_braccio_bringup joint_state_publisher_gui.launch.py rviz:=true
+```
+
 ### Controls & Gripper Calibration
 
 | Function | Ucom / Microtik Gamepad | Xbox Gamepad | Keyboard |
