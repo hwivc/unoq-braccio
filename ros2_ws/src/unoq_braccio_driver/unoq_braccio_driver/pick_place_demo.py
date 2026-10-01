@@ -55,7 +55,7 @@ class PickPlaceDemo(Node):
         super().__init__("pick_place_demo")
         self.declare_parameter("colors", ["red", "blue", "yellow"])
         self.declare_parameter("step_wait", 2.0)      # >= joint_trajectory_bridge move_time
-        self.declare_parameter("gripper_wait", 1.0)
+        self.declare_parameter("gripper_wait", 2.0)   # let the fingers close and settle before lifting
         self.declare_parameter("detect_timeout", 6.0)
         # False: a failed gripper-camera check only warns. True: it aborts the cube.
         self.declare_parameter("strict_gripper_verify", False)

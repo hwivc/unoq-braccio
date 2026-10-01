@@ -181,7 +181,7 @@
 
   <joint name="gripper" type="revolute">
     <axis xyz="0 -1 0"/>
-    <limit effort="5" lower="0.1750" upper="1.2741" velocity="2"/>
+    <limit effort="1" lower="0.1750" upper="1.2741" velocity="2"/>
     <origin xyz="0.010 0 0.03" rpy="0 -0.2967 0"/>
     <parent link="wrist_roll_link"/>
     <child link="right_gripper_link"/>
@@ -192,7 +192,7 @@
     <axis xyz="0 1 0"/>
     <!-- Driven with the same angle as "gripper" by joint_trajectory_bridge. The flipped
          frame (pi + 0.2967) and reversed axis make equal angles a mirror image. -->
-    <limit effort="5" lower="0.1750" upper="1.2741" velocity="2"/>
+    <limit effort="1" lower="0.1750" upper="1.2741" velocity="2"/>
     <origin xyz="-0.010 0 0.03" rpy="0 3.4383 0"/>
     <parent link="wrist_roll_link"/>
     <child link="left_gripper_link"/>
@@ -208,43 +208,61 @@
     <origin xyz="0.03 0 0.055" rpy="0 -1.5708 0"/>
   </joint>
 
+  <!-- Every joint starts at the "ready" pose (arm straight up, gripper open).
+       Without initial values Gazebo spawns at the URDF zeros, which is servo 180
+       for shoulder, elbow and wrist, so the arm lies across the table and sweeps
+       the cubes away before the controller takes over. -->
   <ros2_control name="GazeboSystem" type="system">
     <hardware>
       <plugin>gz_ros2_control/GazeboSimSystem</plugin>
     </hardware>
     <joint name="base">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="shoulder">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">1.5708</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="elbow">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">1.5708</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="wrist_vertical">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">1.5708</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="wrist_rotation">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.0</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="gripper">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.3399</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
     <joint name="left_gripper">
       <command_interface name="position"/>
-      <state_interface name="position"/>
+      <state_interface name="position">
+        <param name="initial_value">0.3399</param>
+      </state_interface>
       <state_interface name="velocity"/>
     </joint>
   </ros2_control>
@@ -261,6 +279,16 @@
   <xacro:no_gravity link="right_gripper_link"/>
   <xacro:no_gravity link="left_gripper_link"/>
   <xacro:no_gravity link="camera_link"/>
+
+  <!-- High-friction finger pads so a squeezed cube does not slide out. -->
+  <xacro:macro name="finger_friction" params="link">
+    <gazebo reference="${link}">
+      <mu1>2.0</mu1>
+      <mu2>2.0</mu2>
+    </gazebo>
+  </xacro:macro>
+  <xacro:finger_friction link="right_gripper_link"/>
+  <xacro:finger_friction link="left_gripper_link"/>
 
   <!-- Gripper-mounted camera (matches the real Grove Vision AI on the gripper). -->
   <gazebo reference="camera_link">

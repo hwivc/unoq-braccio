@@ -31,7 +31,7 @@ class JointTrajectoryBridge(Node):
         super().__init__("unoq_braccio_joint_trajectory_bridge")
         self.declare_parameter("move_time", 1.5)  # longest move, seconds
         self.declare_parameter("min_move_time", 0.1)
-        self.declare_parameter("max_joint_speed", 1.2)  # rad/s
+        self.declare_parameter("max_joint_speed", 0.6)  # rad/s; gentle enough to carry a cube
         self.declare_parameter("late_repeat_period", 1.0)  # gap between the two sends
         self.last_servo = {name: float(POSES["ready"][i]) for i, name in enumerate(JOINT_NAMES)}
         self.have_command = False  # until the first command, the arm pose is unknown
