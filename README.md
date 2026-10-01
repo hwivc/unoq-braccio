@@ -272,13 +272,17 @@ The `manual_control` node allows real-time interactive arm jogging and gripper c
 
 **Option 1: USB Joystick / Gamepad (Ucom / Microtik / Generic default)**
 ```bash
+# Default (first joystick /dev/input/js0):
 ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=joystick controller_type:=ucom
-```
 
-For an Xbox gamepad layout:
-```bash
+# Specify a specific USB device (e.g., js1, /dev/input/js1, or 1):
+ros2 launch unoq_braccio_bringup manual_control.launch.py device_id:=1
+
+# For an Xbox gamepad layout:
 ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=joystick controller_type:=xbox
 ```
+
+> **Note for Ucom / Microtik Gamepads:** Press the **ANALOG** button on your gamepad (ensure the red LED is ON) so that the analog thumbsticks are activated.
 
 **Option 2: Keyboard Teleoperation**
 ```bash

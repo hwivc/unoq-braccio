@@ -1,15 +1,14 @@
-"""Manual Control Node for Arduino UNO Q Braccio.
+"""Manual Control & Gripper Calibration Node for Arduino UNO Q Braccio.
 
 Supports two input types via the 'input_type' parameter:
-  1. 'joystick' : USB Gamepad / Joystick (supports Ucom / DragonRise and Xbox controllers)
+  1. 'joystick' : USB Gamepad / Joystick (supports Ucom / Microtik / DragonRise and Xbox)
   2. 'keyboard' : Direct interactive terminal keyboard teleoperation
 
-Features:
-  - Precise Gripper Calibration (RB/LB or '['/']' to step 1 deg at a time).
-  - One-click / one-button Calibration Report (press 'Y' on controller or 'y' on keyboard).
-  - Dual modes: Cartesian IK (jog in X, Y, Z meters) and Joint Jogging (jog each servo).
-  - Speed toggles: Normal vs Precision (fine-tuning).
-  - Strictly respects Braccio joint limits and clamps.
+Safety features:
+  - DOES NOT jump or force the arm erect on startup.
+  - Reads current arm position from /joint_states if available.
+  - Waits for active user input before publishing any motion commands.
+  - Configurable joystick device_id and device_name.
 """
 
 import math
@@ -25,6 +24,8 @@ from sensor_msgs.msg import JointState, Joy
 from unoq_braccio_driver.braccio_kinematics import (
     GRIPPER_CLOSED,
     GRIPPER_OPEN,
+    GRIPPER_RAD_MAX,
+    GRIPPER_RAD_MIN,
     forward_kinematics,
     solve_ik,
 )
@@ -59,11 +60,24 @@ else:
         return None
 
 
+def urdf_rad_to_servo(name: str, rad: float) -> float:
+    """Convert URDF radian position back to Braccio servo degrees."""
+    if name in ("shoulder", "elbow", "wrist_vertical"):
+        return 180.0 - math.degrees(rad)
+    if name in ("base", "wrist_rotation"):
+        return 90.0 + math.degrees(rad)
+    if name == "gripper":
+        span = GRIPPER_RAD_MAX - GRIPPER_RAD_MIN
+        frac = (rad - GRIPPER_RAD_MIN) / span if span > 1e-6 else 0.0
+        return 10.0 + max(0.0, min(1.0, frac)) * 100.0
+    return 90.0
+
+
 class ManualControl(Node):
     def __init__(self) -> None:
         super().__init__("manual_control")
 
-        # Parameters
+        # Configurable Parameters
         self.declare_parameter("input_type", "joystick")  # 'joystick' or 'keyboard'
         self.declare_parameter("controller_type", "ucom")  # 'ucom' or 'xbox'
         self.declare_parameter("command_topic", "/braccio/joint_command")
@@ -75,10 +89,10 @@ class ManualControl(Node):
 
         self.input_type = self.get_parameter("input_type").get_parameter_value().string_value.lower()
         self.controller_type = self.get_parameter("controller_type").get_parameter_value().string_value.lower()
-        cmd_topic = self.get_parameter("command_topic").get_parameter_value().string_value
-        joy_topic = self.get_parameter("joy_topic").get_parameter_value().string_value
+        self.cmd_topic = self.get_parameter("command_topic").get_parameter_value().string_value
+        self.joy_topic = self.get_parameter("joy_topic").get_parameter_value().string_value
 
-        self.publisher = self.create_publisher(JointState, cmd_topic, 10)
+        self.publisher = self.create_publisher(JointState, self.cmd_topic, 10)
 
         # State Variables
         self.joints = [float(v) for v in POSES["ready"]]
@@ -90,13 +104,21 @@ class ManualControl(Node):
         self.ee_z = 0.08
         self.wrist_rot = 90.0
 
-        self.last_loop_time = time.monotonic()
+        # Safety & connection flags
+        self.active_control = False  # Only send commands once user actually inputs
+        self.first_joy_received = False
         self.latest_joy = None
         self.last_buttons = []
+        self.last_loop_time = time.monotonic()
         self.last_hud_print = 0.0
-        self.running = True
+        self.last_joy_warn = 0.0
 
-        # Keyboard setup
+        # Listen to existing robot joint state so we don't jump on launch
+        self.joint_state_sub = self.create_subscription(
+            JointState, "/joint_states", self.on_joint_states, 10
+        )
+
+        # Keyboard vs Joystick initialization
         self.orig_term_settings = None
         if self.input_type == "keyboard":
             if os.name != "nt":
@@ -107,12 +129,33 @@ class ManualControl(Node):
                     self.get_logger().warn(f"Could not set raw terminal mode: {e}")
             self.print_keyboard_help()
         else:
-            self.subscription = self.create_subscription(Joy, joy_topic, self.on_joy, 10)
+            self.joy_sub = self.create_subscription(Joy, self.joy_topic, self.on_joy, 10)
             self.print_joystick_help()
 
-        # Timer loop
+        # Timer loop for control
         period = 1.0 / float(self.get_parameter("publish_rate").value)
         self.timer = self.create_timer(period, self.control_loop)
+
+    def on_joint_states(self, msg: JointState) -> None:
+        """Initialize joints to the robot's current physical/simulated pose if we haven't started moving yet."""
+        if self.active_control:
+            return  # User has taken manual control; do not overwrite from feedback
+        
+        name_map = dict(zip(msg.name, msg.position))
+        updated = False
+        for i, jname in enumerate(JOINT_NAMES):
+            if jname in name_map:
+                deg = urdf_rad_to_servo(jname, name_map[jname])
+                self.joints[i] = float(clamp_degrees(jname, deg))
+                updated = True
+        
+        if updated:
+            try:
+                tip = forward_kinematics(self.joints[:5])
+                self.ee_x, self.ee_y, self.ee_z = tip[0], tip[1], tip[2]
+                self.wrist_rot = self.joints[4]
+            except Exception:
+                pass
 
     def print_keyboard_help(self) -> None:
         help_text = """
@@ -132,7 +175,7 @@ class ManualControl(Node):
     Y     : 📋 PRINT FULL CALIBRATION REPORT
 
   [UTILITY]
-    M     : Toggle Control Mode (Cartesian IK <-> Joint Jogging)
+    M     : Toggle Mode (Cartesian IK <-> Joint Jogging)
     P     : Toggle Speed (Normal <-> Precision Slow)
     H     : Home / Reset arm to READY pose
     ?     : Show this help menu
@@ -148,24 +191,35 @@ class ManualControl(Node):
 🎮 BRACCIO MANUAL CONTROL: JOYSTICK MODE ({'UCOM / USB GAMEPAD' if is_ucom else 'XBOX'})
 ======================================================================
   [GRIPPER CALIBRATION]
-    {'R1 / Button 6' if is_ucom else 'RB'} : Step Gripper CLOSE (+1 deg)
-    {'L1 / Button 5' if is_ucom else 'LB'} : Step Gripper OPEN (-1 deg)
-    {'Button 3 (X)' if is_ucom else 'Button A'} : Snap OPEN (10 deg)
-    {'Button 2 (O)' if is_ucom else 'Button B'} : Snap CLOSED (95 deg)
-    {'Button 1 (▲)' if is_ucom else 'Button Y'} : 📋 PRINT FULL CALIBRATION REPORT
+    {'R1 (Btn 6)' if is_ucom else 'RB'} : Step Gripper CLOSE (+1 deg)
+    {'L1 (Btn 5)' if is_ucom else 'LB'} : Step Gripper OPEN (-1 deg)
+    {'Btn 3 (X)' if is_ucom else 'Btn A'} : Snap OPEN (10 deg)
+    {'Btn 2 (O)' if is_ucom else 'Btn B'} : Snap CLOSED (95 deg)
+    {'Btn 1 (▲)' if is_ucom else 'Btn Y'} : 📋 PRINT FULL CALIBRATION REPORT
 
   [ARM POSITIONING]
     Left Stick   : Move X (Forward/Back) & Y (Left/Right)
     Right Stick  : Vertical moves Z (Elevation); Horizontal rotates Wrist
-    {'Select / Button 9' if is_ucom else 'Back/View'} : Toggle Mode (Cartesian IK <-> Joint Jog)
-    {'Start / Button 10' if is_ucom else 'Start'}   : Toggle Speed (Normal <-> Precision)
-    {'Button 4 (■)' if is_ucom else 'Button X'} : Home / Reset to READY pose
+    {'Select (Btn 9)' if is_ucom else 'Back/View'} : Toggle Mode (Cartesian IK <-> Joint Jog)
+    {'Start (Btn 10)' if is_ucom else 'Start'}   : Toggle Speed (Normal <-> Precision)
+    {'Btn 4 (■)' if is_ucom else 'Btn X'} : Reset to READY pose
+
+  💡 Tip: On Ucom/Microtik gamepads, ensure the red 'ANALOG' LED is ON!
 ======================================================================
 """
         print(help_text)
 
     def on_joy(self, msg: Joy) -> None:
+        if not self.first_joy_received:
+            self.first_joy_received = True
+            self.get_logger().info(
+                f"✅ Connected to Joystick! Found {len(msg.axes)} axes and {len(msg.buttons)} buttons."
+            )
+            self.get_logger().info("💡 Move any thumbstick or press any button to begin controlling.")
+
         self.latest_joy = msg
+
+        # Check for button edge presses
         if not self.last_buttons or len(self.last_buttons) != len(msg.buttons):
             self.last_buttons = list(msg.buttons)
             return
@@ -178,6 +232,7 @@ class ManualControl(Node):
         # Mode switch: Ucom button 8 (Select) or Xbox button 6 (Back)
         mode_btn = 8 if is_ucom else 6
         if pressed(mode_btn):
+            self.active_control = True
             self.cartesian_mode = not self.cartesian_mode
             name = "CARTESIAN IK (XYZ)" if self.cartesian_mode else "JOINT JOGGING"
             self.get_logger().info(f"🕹️ Mode Switched: {name}")
@@ -185,6 +240,7 @@ class ManualControl(Node):
         # Speed switch: Ucom button 9 (Start) or Xbox button 7 (Start)
         speed_btn = 9 if is_ucom else 7
         if pressed(speed_btn):
+            self.active_control = True
             self.precision_mode = not self.precision_mode
             name = "PRECISION (Slow)" if self.precision_mode else "NORMAL"
             self.get_logger().info(f"⚡ Speed: {name}")
@@ -192,12 +248,14 @@ class ManualControl(Node):
         # Snap Open: Ucom button 2 (X) or Xbox button 0 (A)
         snap_open_btn = 2 if is_ucom else 0
         if pressed(snap_open_btn):
+            self.active_control = True
             self.joints[5] = float(GRIPPER_OPEN)
             self.get_logger().info(f"👐 Gripper OPEN ({GRIPPER_OPEN}°)")
 
         # Snap Closed: Ucom button 1 (Circle) or Xbox button 1 (B)
         snap_closed_btn = 1 if is_ucom else 1
         if pressed(snap_closed_btn):
+            self.active_control = True
             self.joints[5] = float(GRIPPER_CLOSED)
             self.get_logger().info(f"✊ Gripper CLOSED ({GRIPPER_CLOSED}°)")
 
@@ -209,6 +267,7 @@ class ManualControl(Node):
         # Reset Ready: Ucom button 3 (Square) or Xbox button 2 (X)
         reset_btn = 3 if is_ucom else 2
         if pressed(reset_btn):
+            self.active_control = True
             self.joints = [float(v) for v in POSES["ready"]]
             self.ee_x, self.ee_y, self.ee_z = 0.22, 0.00, 0.08
             self.wrist_rot = 90.0
@@ -231,7 +290,20 @@ class ManualControl(Node):
         if self.input_type == "keyboard":
             self.handle_keyboard_input(dt)
         else:
+            if not self.first_joy_received:
+                if now - self.last_joy_warn > 3.0:
+                    self.last_joy_warn = now
+                    self.get_logger().warn(
+                        f"⏳ Waiting for joystick data on topic '{self.joy_topic}'...\n"
+                        "   Ensure joy_node is running or launch with: "
+                        "ros2 launch unoq_braccio_bringup manual_control.launch.py device_id:=<X>"
+                    )
+                return
             self.handle_joystick_input(dt)
+
+        # Only publish command if active control has been initiated by user
+        if not self.active_control:
+            return
 
         # Publish JointState
         msg = JointState()
@@ -254,6 +326,7 @@ class ManualControl(Node):
         if key is None:
             return
 
+        self.active_control = True
         k = key.lower()
         if k == "m":
             self.cartesian_mode = not self.cartesian_mode
@@ -338,31 +411,47 @@ class ManualControl(Node):
 
         axes = self.latest_joy.axes
         buttons = self.latest_joy.buttons
-        is_ucom = (self.controller_type == "ucom")
         speed_scale = 0.25 if self.precision_mode else 1.0
 
         # Gripper buttons:
         # Ucom: R1 = button 5, L1 = button 4
         # Xbox: RB = button 5, LB = button 4
-        grip_speed = 25.0 * dt * speed_scale
+        grip_speed = 30.0 * dt * speed_scale
         if len(buttons) > 5 and buttons[5]:
+            self.active_control = True
             self.joints[5] = clamp_degrees("gripper", self.joints[5] + grip_speed)
         if len(buttons) > 4 and buttons[4]:
+            self.active_control = True
             self.joints[5] = clamp_degrees("gripper", self.joints[5] - grip_speed)
 
-        # Ucom D-pad (usually on axes 4 & 5 or 0 & 1 depending on 'analog' mode)
-        if len(axes) > 5 and abs(axes[5]) > 0.5:
-            self.joints[5] = clamp_degrees("gripper", self.joints[5] + axes[5] * 15.0 * dt)
+        # Check axes motion
+        lx = self.apply_deadzone(axes[0] if len(axes) > 0 else 0.0)
+        ly = self.apply_deadzone(axes[1] if len(axes) > 1 else 0.0)
+        
+        # On Ucom / generic pads, right stick vertical can be axis 2, 3 or 4
+        rz = 0.0
+        rw = 0.0
+        if len(axes) > 3:
+            rz = self.apply_deadzone(axes[3])
+            rw = self.apply_deadzone(axes[2])
+        elif len(axes) > 2:
+            rz = self.apply_deadzone(axes[2])
+
+        # D-pad fine adjustment (axes 4/5 or hat)
+        if len(axes) > 5:
+            dpad_y = self.apply_deadzone(axes[5])
+            if abs(dpad_y) > 0.0:
+                self.active_control = True
+                self.joints[5] = clamp_degrees("gripper", self.joints[5] + dpad_y * 15.0 * dt)
+
+        # Did any stick move?
+        if any(abs(v) > 0.001 for v in (lx, ly, rz, rw)):
+            self.active_control = True
+
+        if not self.active_control:
+            return
 
         if self.cartesian_mode:
-            lx = self.apply_deadzone(axes[0] if len(axes) > 0 else 0.0)
-            ly = self.apply_deadzone(axes[1] if len(axes) > 1 else 0.0)
-            # Ucom right stick vertical is typically axis 3 or axis 2
-            rz_axis = 3 if len(axes) > 3 else (2 if len(axes) > 2 else -1)
-            rw_axis = 2 if len(axes) > 2 else -1
-            rz = self.apply_deadzone(axes[rz_axis]) if rz_axis >= 0 else 0.0
-            rw = self.apply_deadzone(axes[rw_axis]) if rw_axis >= 0 and rw_axis != rz_axis else 0.0
-
             v_lin = float(self.get_parameter("ik_linear_speed").value) * speed_scale
             dx = ly * v_lin * dt
             dy = -lx * v_lin * dt
@@ -376,21 +465,18 @@ class ManualControl(Node):
 
             sol = solve_ik(nx, ny, nz, gripper=int(self.joints[5]), wrist_rotation=nw)
             if sol is not None:
-                self.ee_x, self.ee_y, self.ee_z = nx, ny, nz
+                self.ee_x = nx
+                self.ee_y = ny
+                self.ee_z = nz
                 self.wrist_rot = float(nw)
                 for i in range(5):
                     self.joints[i] = float(sol[i])
         else:
             # Joint Jog
             v_joint = float(self.get_parameter("joint_speed").value) * speed_scale
-            j_base = self.apply_deadzone(axes[0] if len(axes) > 0 else 0.0)
-            j_shld = self.apply_deadzone(axes[1] if len(axes) > 1 else 0.0)
-            rz_axis = 3 if len(axes) > 3 else 1
-            j_elbw = self.apply_deadzone(axes[rz_axis]) if len(axes) > rz_axis else 0.0
-
-            self.joints[0] = clamp_degrees("base", self.joints[0] - j_base * v_joint * dt)
-            self.joints[1] = clamp_degrees("shoulder", self.joints[1] - j_shld * v_joint * dt)
-            self.joints[2] = clamp_degrees("elbow", self.joints[2] - j_elbw * v_joint * dt)
+            self.joints[0] = clamp_degrees("base", self.joints[0] - lx * v_joint * dt)
+            self.joints[1] = clamp_degrees("shoulder", self.joints[1] - ly * v_joint * dt)
+            self.joints[2] = clamp_degrees("elbow", self.joints[2] - rz * v_joint * dt)
 
             try:
                 tip = forward_kinematics(self.joints[:5])

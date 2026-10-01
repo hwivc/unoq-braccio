@@ -9,9 +9,16 @@ def generate_launch_description():
     input_type = LaunchConfiguration("input_type")
     controller_type = LaunchConfiguration("controller_type")
     device_id = LaunchConfiguration("device_id")
+    device_name = LaunchConfiguration("device_name")
     deadzone = LaunchConfiguration("deadzone")
 
     is_joystick = PythonExpression(["'", input_type, "'.lower() == 'joystick'"])
+
+    # Convert device_id safely to integer for C++ joy_node parameter
+    device_id_int = PythonExpression([
+        "int('", device_id, "'.split('js')[-1]) if 'js' in '", device_id, "' else int('", device_id, "')"
+    ])
+    deadzone_float = PythonExpression(["float('", deadzone, "')"])
 
     return LaunchDescription(
         [
@@ -28,7 +35,12 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "device_id",
                 default_value="0",
-                description="Joystick device index (/dev/input/jsX)",
+                description="Joystick USB device index (e.g. 0 for /dev/input/js0, 1 for /dev/input/js1, or full /dev/input/jsX)",
+            ),
+            DeclareLaunchArgument(
+                "device_name",
+                default_value="",
+                description="Optional joystick device name string match",
             ),
             DeclareLaunchArgument(
                 "deadzone",
@@ -43,8 +55,9 @@ def generate_launch_description():
                 name="joy_node",
                 parameters=[
                     {
-                        "device_id": device_id,
-                        "deadzone": deadzone,
+                        "device_id": device_id_int,
+                        "device_name": device_name,
+                        "deadzone": deadzone_float,
                         "autorepeat_rate": 20.0,
                     }
                 ],
@@ -61,11 +74,10 @@ def generate_launch_description():
                     {
                         "input_type": input_type,
                         "controller_type": controller_type,
-                        "deadzone": deadzone,
+                        "deadzone": deadzone_float,
                         "command_topic": "/braccio/joint_command",
                     }
                 ],
-                prefix="xterm -e" if False else "",
                 output="screen",
                 emulate_tty=True,
             ),
