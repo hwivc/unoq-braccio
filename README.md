@@ -286,8 +286,7 @@ ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=joystick c
 
 **Option 2: Keyboard Teleoperation**
 ```bash
-ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=keyboard
-# or directly via run:
+# Keyboard mode needs an interactive terminal, so use ros2 run:
 ros2 run unoq_braccio_driver manual_control --ros-args -p input_type:=keyboard
 ```
 
@@ -302,26 +301,43 @@ ros2 launch unoq_braccio_bringup joint_state_publisher_gui.launch.py rviz:=true
 
 ### Controls & Gripper Calibration
 
+There are two modes, toggled with `Select` / `Back` / `M`:
+
+- **TOOL** (default): move the fingertip. The base turns, the tip reaches
+  out/in and up/down, and the tool keeps its pitch while you move. If a move
+  would leave the workspace, the pitch gives way by up to 30 degrees, then
+  the blocked direction stops while the others keep working.
+- **JOINT**: drive each servo directly.
+
 | Function | Ucom / Microtik Gamepad | Xbox Gamepad | Keyboard |
 | :--- | :--- | :--- | :--- |
-| **Step Gripper Close** (+1°) | `R1` (Button 6) | `RB` | `]` |
-| **Step Gripper Open** (-1°) | `L1` (Button 5) | `LB` | `[` |
-| **Snap Gripper Open** (10°) | `Button 3` (X) | `A` | `O` |
-| **Snap Gripper Closed** (95°) | `Button 2` (Circle) | `B` | `C` |
-| **Print Calibration Report** | `Button 1` (Triangle) | `Y` | `Y` |
-| **Move Arm X / Y** | Left Thumbstick | Left Thumbstick | `W`/`S` (X), `A`/`D` (Y) |
-| **Move Arm Z (Elevation)** | Right Stick Vertical | Right Stick Vertical | `R` (Up) / `F` (Down) |
-| **Rotate Wrist** | Right Stick Horizontal | Right Stick Horizontal | `Q` (CCW) / `E` (CW) |
-| **Switch Mode (IK <-> Joint)** | `Select` (Button 9) | `Back / View` | `M` |
-| **Toggle Speed (Normal <-> Slow)** | `Start` (Button 10) | `Start / Menu` | `P` |
-| **Reset to Ready Pose** | `Button 4` (Square) | `X` | `H` |
+| **Turn base** (TOOL) / base (JOINT) | Left stick X | Left stick X | `A` / `D` |
+| **Reach out / in** (TOOL) / shoulder (JOINT) | Left stick Y | Left stick Y | `W` / `S` |
+| **Up / down** (TOOL) / elbow (JOINT) | Right stick Y | Right stick Y | `R` / `F` |
+| **Tilt tool** (TOOL) / wrist_vertical (JOINT) | D-pad up / down | D-pad up / down | `T` / `G` |
+| **Roll wrist** | Right stick X | Right stick X | `Q` / `E` |
+| **Gripper open / close** (hold) | `L1` / `R1` | `LB` / `RB` | `[` / `]` |
+| **Snap Gripper Open** (10°) | `Cross` (3) | `A` | `O` |
+| **Snap Gripper Closed** (95°) | `Circle` (2) | `B` | `C` |
+| **Go to Ready Pose** | `Square` (4) | `X` | `H` |
+| **Print Calibration Report** | `Triangle` (1) | `Y` | `Y` |
+| **Switch Mode (TOOL <-> JOINT)** | `Select` | `Back / View` | `M` |
+| **Toggle Speed (Normal <-> Precision)** | `Start` | `Start / Menu` | `P` |
+
+Stick response is gentle near the centre and full speed at the edge, and the
+output is slew-limited (`max_joint_rate`, default 120 deg/s), so the arm never
+jerks. If a stick or button is on a different index on your pad, check with
+`ros2 topic echo /joy` and override it, for example
+`--ros-args -p axis_rx:=2 -p button_mode:=8`. Speeds are parameters too
+(`linear_speed`, `yaw_speed`, `pitch_speed`, `joint_speed`, `gripper_speed`,
+`precision_scale`).
 
 ### Gripper Calibration Workflow
 
 1. Start the simulation (`ros2 launch unoq_braccio_bringup sim.launch.py`) or hardware bridge.
 2. Launch `manual_control`.
 3. Jog the arm over a cube and descend until the fingers surround the cube center.
-4. Use the gripper step buttons (`R1`/`RB` or `]`) to pinch the cube until it is firmly gripped.
+4. Hold the gripper close button (`R1`/`RB`, or tap `]`) until the cube is firmly gripped. Press `Start`/`P` first for slow, fine steps.
 5. Press **`Y`** (or Triangle on Ucom). The terminal prints a formatted calibration report with the exact values to copy & paste into `braccio_kinematics.py` (`GRIPPER_CLOSED = ...`) and `braccio_workspace.py` (`CUBE_CENTRE_Z = ...`).
 
 ## Command Protocol

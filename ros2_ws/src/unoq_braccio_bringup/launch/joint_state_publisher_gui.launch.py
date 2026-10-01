@@ -32,6 +32,8 @@ def generate_launch_description():
                 xacro_path,
                 " mesh_dir:=",
                 mesh_dir,
+                # left_gripper mimics gripper: one slider drives both fingers.
+                " gui_mimic:=true",
             ]
         )
     }

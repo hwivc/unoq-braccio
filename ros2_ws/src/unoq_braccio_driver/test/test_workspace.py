@@ -100,31 +100,57 @@ def test_cube_and_bin_hue_ranges_do_not_overlap():
     _hue_gaps()
 
 
-def test_left_gripper_mirrors_right_within_its_urdf_limits():
-    """Regression test for a real bug: a wrong LEFT_GRIPPER_OFFSET sent the
-    left finger's target below its own URDF joint limit at the closed end.
-    ros2_control clamped it there, so only the right finger actually moved -
-    one finger poking a cube instead of two fingers pinching it.
+def _urdf_joint(xacro, name):
+    joint = ET.fromstring(
+        xacro[xacro.index(f'<joint name="{name}"') : xacro.index("</joint>", xacro.index(f'<joint name="{name}"')) + 8]
+        .replace("xacro:", "xacro_")
+    )
+    origin = joint.find("origin")
+    limit = joint.find("limit")
+    return (
+        [float(v) for v in origin.get("xyz").split()],
+        [float(v) for v in origin.get("rpy").split()],
+        [float(v) for v in joint.find("axis").get("xyz").split()],
+        float(limit.get("lower")),
+        float(limit.get("upper")),
+    )
 
-    This reads the left_gripper joint's limits straight from the URDF (not a
-    hardcoded copy of the numbers), so it fails the same way that bug did if
-    the offset formula or the URDF limits drift apart again.
+
+def _finger_tip(origin, rpy, axis, angle, length=0.08):
+    """Fingertip (x, z) in the wrist_roll frame. Both fingers have rpy only about
+    y and axis +-y, and their meshes extend along the link's +x."""
+    pitch = rpy[1] + axis[1] * angle
+    return origin[0] + length * math.cos(pitch), origin[2] - length * math.sin(pitch)
+
+
+def test_gripper_fingers_mirror_each_other():
+    """Regression test for two real bugs. First, a left finger target outside
+    its URDF limits, which ros2_control clamped so only one finger moved.
+    Second, "left = offset - right", which kept the left target in range but
+    swung both fingers to the same side together instead of pinching.
+
+    This reads the finger joints straight from the URDF, then checks that every
+    servo value stays in range, that the fingertips are mirror images, and
+    that they move towards each other as the gripper closes.
     """
     xacro = open(URDF, encoding="utf-8").read()
-    joint = xacro[xacro.index('joint name="left_gripper"'):]
-    limit = joint[joint.index("<limit") : joint.index("/>", joint.index("<limit"))]
-    lower = float(limit[limit.index('lower="') + 7 :].split('"')[0])
-    upper = float(limit[limit.index('upper="') + 7 :].split('"')[0])
+    right = _urdf_joint(xacro, "gripper")
+    left = _urdf_joint(xacro, "left_gripper")
 
-    previous = None
+    previous_gap = None
     for servo in range(GRIPPER_OPEN, 111):
-        angle = servo_to_urdf("left_gripper", servo)
-        assert lower - 1e-6 <= angle <= upper + 1e-6, (servo, angle, lower, upper)
-        if previous is not None:
-            # "left = offset - right", and the right angle increases as it closes,
-            # so the left angle must decrease over the same servo range.
-            assert angle <= previous + 1e-9, "left angle must move monotonically as it closes"
-        previous = angle
+        r_angle = servo_to_urdf("gripper", servo)
+        l_angle = servo_to_urdf("left_gripper", servo)
+        for angle, (_, _, _, lower, upper) in ((r_angle, right), (l_angle, left)):
+            assert lower - 1e-6 <= angle <= upper + 1e-6, (servo, angle, lower, upper)
+        rx, rz = _finger_tip(*right[:3], r_angle)
+        lx, lz = _finger_tip(*left[:3], l_angle)
+        assert abs(rx + lx) < 1e-3 and abs(rz - lz) < 1e-3, (servo, (rx, rz), (lx, lz))
+        assert rx > 0 > lx, (servo, rx, lx)
+        gap = rx - lx
+        if previous_gap is not None:
+            assert gap < previous_gap, "fingers must close towards each other"
+        previous_gap = gap
 
 
 def test_arm_targets_reachable_and_ik_matches_urdf():

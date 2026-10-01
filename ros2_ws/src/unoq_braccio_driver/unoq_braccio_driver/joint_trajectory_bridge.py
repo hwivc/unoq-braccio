@@ -21,13 +21,20 @@ class JointTrajectoryBridge(Node):
     it is held until a subscriber exists, then sent twice to cover the gap
     between the controller subscribing and becoming active. A command sent
     while the controller is already up is sent once, so moves are not restarted.
+
+    The move time scales with the size of the move (max_joint_speed), capped
+    at move_time: big pose changes stay slow and smooth, while the small,
+    frequent steps streamed by manual_control track the stick without lag.
     """
 
     def __init__(self) -> None:
         super().__init__("unoq_braccio_joint_trajectory_bridge")
-        self.declare_parameter("move_time", 1.5)
+        self.declare_parameter("move_time", 1.5)  # longest move, seconds
+        self.declare_parameter("min_move_time", 0.1)
+        self.declare_parameter("max_joint_speed", 1.2)  # rad/s
         self.declare_parameter("late_repeat_period", 1.0)  # gap between the two sends
         self.last_servo = {name: float(POSES["ready"][i]) for i, name in enumerate(JOINT_NAMES)}
+        self.have_command = False  # until the first command, the arm pose is unknown
         self.pending = None
         self.sends_left = 0
         self.publisher = self.create_publisher(
@@ -46,6 +53,7 @@ class JointTrajectoryBridge(Node):
 
     def on_command(self, msg: JointState) -> None:
         # Joints missing from the message keep their last commanded value.
+        previous = servo_positions_to_urdf(self.last_servo)
         self.last_servo.update(dict(zip(msg.name, (float(v) for v in msg.position))))
 
         trajectory = JointTrajectory()
@@ -55,6 +63,16 @@ class JointTrajectoryBridge(Node):
         point = JointTrajectoryPoint()
         point.positions = servo_positions_to_urdf(self.last_servo)
         move_time = float(self.get_parameter("move_time").value)
+        if self.have_command:
+            largest = max(abs(a - b) for a, b in zip(point.positions, previous))
+            move_time = min(
+                move_time,
+                max(
+                    float(self.get_parameter("min_move_time").value),
+                    largest / float(self.get_parameter("max_joint_speed").value),
+                ),
+            )
+        self.have_command = True
         point.time_from_start = Duration(
             sec=int(move_time), nanosec=int((move_time % 1.0) * 1e9)
         )

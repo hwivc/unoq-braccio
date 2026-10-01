@@ -7,7 +7,7 @@ It includes:
 
 - Six Braccio command joints: `base`, `shoulder`, `elbow`, `wrist_vertical`,
   `wrist_rotation`, and `gripper` (plus a mirrored `left_gripper` finger that
-  the trajectory bridge drives).
+  the trajectory bridge drives with the same angle as `gripper`).
 - Visual STL meshes for the Braccio base, links, wrist, and gripper, adapted
   from Will Stedden's GPL-3.0 Braccio MoveIt/Gazebo package.
 - A gripper-mounted camera (`/vision/gripper/image_raw`) looking along the

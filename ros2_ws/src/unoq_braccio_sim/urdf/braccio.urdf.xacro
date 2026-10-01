@@ -2,6 +2,8 @@
 <robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="unoq_braccio">
   <xacro:arg name="controllers_file" default=""/>
   <xacro:arg name="mesh_dir" default=""/>
+  <!-- joint_state_publisher_gui only: hide the left finger slider and drive it from "gripper". -->
+  <xacro:arg name="gui_mimic" default="false"/>
 
   <material name="orange"><color rgba="1.0 0.34 0.02 1"/></material>
   <material name="white"><color rgba="0.86 0.86 0.82 1"/></material>
@@ -188,11 +190,15 @@
 
   <joint name="left_gripper" type="revolute">
     <axis xyz="0 1 0"/>
-    <!-- Driven as 2.5482 - gripper by joint_trajectory_bridge (mirror of the right finger). -->
-    <limit effort="5" lower="1.2741" upper="2.3732" velocity="2"/>
+    <!-- Driven with the same angle as "gripper" by joint_trajectory_bridge: the flipped
+         frame (pi + 0.2967) and reversed axis make equal angles a mirror image. -->
+    <limit effort="5" lower="0.1750" upper="1.2741" velocity="2"/>
     <origin xyz="-0.010 0 0.03" rpy="0 3.4383 0"/>
     <parent link="wrist_roll_link"/>
     <child link="left_gripper_link"/>
+    <xacro:if value="$(arg gui_mimic)">
+      <mimic joint="gripper" multiplier="1" offset="0"/>
+    </xacro:if>
     <dynamics damping="0.1" friction="0.001"/>
   </joint>
 

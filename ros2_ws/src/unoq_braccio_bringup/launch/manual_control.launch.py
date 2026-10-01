@@ -25,7 +25,8 @@ def generate_launch_description():
             DeclareLaunchArgument(
                 "input_type",
                 default_value="joystick",
-                description="Control input mode: 'joystick' or 'keyboard'",
+                description="Control input mode: 'joystick' or 'keyboard' "
+                "(on Linux, keyboard mode needs 'ros2 run' for an interactive terminal)",
             ),
             DeclareLaunchArgument(
                 "controller_type",
@@ -57,8 +58,10 @@ def generate_launch_description():
                     {
                         "device_id": device_id_int,
                         "device_name": device_name,
-                        "deadzone": deadzone_float,
-                        "autorepeat_rate": 20.0,
+                        # manual_control applies its own deadzone and response
+                        # curve; a second large one here would stack with it.
+                        "deadzone": 0.05,
+                        "autorepeat_rate": 30.0,
                     }
                 ],
                 condition=IfCondition(is_joystick),

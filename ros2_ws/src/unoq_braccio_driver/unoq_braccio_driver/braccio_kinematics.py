@@ -32,19 +32,15 @@ TOOL_LENGTH = WRIST_LINK + TIP_LENGTH
 GRIPPER_OPEN = 10
 GRIPPER_CLOSED = 95         # tune for the 30 mm cube; 110 is fully shut
 
-# Gripper joint range in the URDF and the mirrored left finger.
+# Gripper joint range in the URDF. The left finger uses the same range and
+# the same angle as the right one: its joint frame is flipped 180 degrees about
+# the finger axis (rpy pitch = pi + 0.2967) and its axis is reversed, so equal
+# joint angles put the two fingertips at mirror-image positions and they close
+# towards each other. An earlier "left = offset - right" mapping swung both
+# fingers to the same side together, like windscreen wipers, instead of
+# pinching.
 GRIPPER_RAD_MIN = 0.1750
 GRIPPER_RAD_MAX = 1.2741
-# left = offset - right. The left_gripper joint's own URDF range is
-# [GRIPPER_RAD_MAX, 2*GRIPPER_RAD_MAX - GRIPPER_RAD_MIN], so this must be
-# 2*GRIPPER_RAD_MAX for "left = offset - right" to land inside it at both
-# ends (servo=10 -> left=GRIPPER_RAD_MAX; servo=110 -> left=GRIPPER_RAD_MIN's
-# mirror, GRIPPER_RAD_MAX-GRIPPER_RAD_MIN + GRIPPER_RAD_MAX). Using
-# GRIPPER_RAD_MIN + GRIPPER_RAD_MAX here (an earlier version of this file)
-# put the closed-end target below the joint's lower limit, so the controller
-# clamped the left finger there and only the right finger actually closed -
-# one finger poking a cube instead of two fingers pinching it.
-LEFT_GRIPPER_OFFSET = 2.0 * GRIPPER_RAD_MAX
 
 URDF_ARM_JOINTS = ["base", "shoulder", "elbow", "wrist_vertical", "wrist_rotation"]
 URDF_JOINT_NAMES = URDF_ARM_JOINTS + ["gripper", "left_gripper"]
@@ -61,7 +57,7 @@ def servo_to_urdf(name: str, value: float) -> float:
         span = GRIPPER_RAD_MAX - GRIPPER_RAD_MIN
         return GRIPPER_RAD_MIN + max(0.0, min(1.0, (value - 10.0) / 100.0)) * span
     if name == "left_gripper":
-        return LEFT_GRIPPER_OFFSET - servo_to_urdf("gripper", value)
+        return servo_to_urdf("gripper", value)
     raise KeyError(name)
 
 
@@ -137,8 +133,8 @@ def forward_kinematics(servo_degrees, tip=(0.0, 0.0, TIP_LENGTH)):
 
 # --- inverse kinematics -----------------------------------------------------
 
-def _two_link(target_r: float, target_z: float):
-    """Elbow-up planar solution. Returns (shoulder_elev, forearm_elev) or None."""
+def _two_link(target_r: float, target_z: float, elbow_up: bool = True):
+    """Planar solution. Returns (shoulder_elev, forearm_elev) or None."""
     dr = target_r - SHOULDER_RADIAL
     dz = target_z - SHOULDER_HEIGHT
     dist = math.hypot(dr, dz)
@@ -146,11 +142,56 @@ def _two_link(target_r: float, target_z: float):
         return None
     cos_bend = (dist * dist - UPPER_ARM ** 2 - FOREARM ** 2) / (2.0 * UPPER_ARM * FOREARM)
     bend = math.acos(max(-1.0, min(1.0, cos_bend)))  # forearm relative to upper arm
+    if not elbow_up:
+        bend = -bend
     shoulder = math.atan2(dz, dr) + math.atan2(
         FOREARM * math.sin(bend), UPPER_ARM + FOREARM * math.cos(bend)
     )
     # elbow-up means the forearm points below the upper arm
     return shoulder, shoulder - bend
+
+
+def planar_ik(reach_m, z_m, pitch_deg, near=None):
+    """Shoulder, elbow and wrist_vertical servo degrees (floats) that put the
+    fingertip at signed horizontal ``reach`` from the base axis and height
+    ``z``, with the tool at ``pitch`` degrees (-90 points straight down, 0
+    level, 90 straight up). Returns ``None`` when unreachable within limits.
+
+    Without ``near`` the elbow-up solution is preferred; with ``near`` (current
+    shoulder, elbow, wrist_vertical) the solution closest to it is returned,
+    so continuous jogging never flips between elbow branches.
+    """
+    from unoq_braccio_driver.braccio_model import JOINT_LIMITS
+
+    pitch = math.radians(pitch_deg)
+    wrist_r = reach_m - TOOL_LENGTH * math.cos(pitch)
+    wrist_z = z_m - TOOL_LENGTH * math.sin(pitch)
+    candidates = []
+    for elbow_up in (True, False):
+        solution = _two_link(wrist_r, wrist_z, elbow_up)
+        if solution is None:
+            continue
+        shoulder_elev, forearm_elev = solution
+        servo = [
+            180.0 - math.degrees(shoulder_elev),
+            90.0 - math.degrees(forearm_elev - shoulder_elev),
+            90.0 - math.degrees(pitch - forearm_elev),
+        ]
+        if all(
+            JOINT_LIMITS[n].minimum <= v <= JOINT_LIMITS[n].maximum
+            for n, v in zip(("shoulder", "elbow", "wrist_vertical"), servo)
+        ):
+            candidates.append(servo)
+    if not candidates:
+        return None
+    if near is None:
+        return candidates[0]
+    return min(candidates, key=lambda c: max(abs(a - b) for a, b in zip(c, near)))
+
+
+def tool_pitch(servo_degrees):
+    """Tool pitch in degrees (as used by :func:`planar_ik`) for the arm servos."""
+    return 360.0 - servo_degrees[1] - servo_degrees[2] - servo_degrees[3]
 
 
 def solve_ik(x_m, y_m, z_m, gripper=GRIPPER_OPEN, wrist_rotation=90):
