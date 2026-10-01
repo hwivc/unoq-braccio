@@ -30,7 +30,7 @@ TIP_LENGTH = 0.10           # wrist_roll origin -> fingertip (approximate)
 TOOL_LENGTH = WRIST_LINK + TIP_LENGTH
 
 GRIPPER_OPEN = 10
-GRIPPER_CLOSED = 95         # tune for the 30 mm cube; 110 is fully shut
+GRIPPER_CLOSED = 103        # tune for the 30 mm cube; 110 is fully shut
 
 # Gripper joint range in the URDF. The left finger uses the same range and
 # the same angle as the right one: its joint frame is flipped 180 degrees about
