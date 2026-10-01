@@ -24,6 +24,7 @@ ROS 2 host -> tcp_bridge -> UNO Q agent -> servos
   - [4. Run the hardware bridge over USB](#4-run-the-hardware-bridge-over-usb)
   - [5. Run the hardware bridge over the network](#5-run-the-hardware-bridge-over-the-network)
 - [Simulation Commands](#simulation-commands)
+- [Manual Control and Calibration](#manual-control-and-calibration)
 - [Command Protocol](#command-protocol)
 - [Vision and Edge Impulse](#vision-and-edge-impulse)
 - [Data Capture and Robot Stats](#data-capture-and-robot-stats)
@@ -262,7 +263,53 @@ The scene has red, blue and yellow 30 mm cubes and green, cyan and magenta bins
 (different from the cube colors so the camera cannot confuse them), all within
 the arm's reach. Check the layout without ROS or Gazebo with
 `python ros2_ws/src/unoq_braccio_driver/test/test_workspace.py`. Details, servo conventions and current limitations are
-in [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_sim/README.md).
+
+## Manual Control and Calibration
+
+The `manual_control` node allows real-time interactive arm jogging and gripper calibration for both Gazebo simulation and the physical robot arm. It supports both **USB joysticks/gamepads** (such as generic Ucom/Microtik controllers and Xbox gamepads) and **keyboard teleoperation**.
+
+### Launching Manual Control
+
+**Option 1: USB Joystick / Gamepad (Ucom / Microtik / Generic default)**
+```bash
+ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=joystick controller_type:=ucom
+```
+
+For an Xbox gamepad layout:
+```bash
+ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=joystick controller_type:=xbox
+```
+
+**Option 2: Keyboard Teleoperation**
+```bash
+ros2 launch unoq_braccio_bringup manual_control.launch.py input_type:=keyboard
+# or directly via run:
+ros2 run unoq_braccio_driver manual_control --ros-args -p input_type:=keyboard
+```
+
+### Controls & Gripper Calibration
+
+| Function | Ucom / Microtik Gamepad | Xbox Gamepad | Keyboard |
+| :--- | :--- | :--- | :--- |
+| **Step Gripper Close** (+1°) | `R1` (Button 6) | `RB` | `]` |
+| **Step Gripper Open** (-1°) | `L1` (Button 5) | `LB` | `[` |
+| **Snap Gripper Open** (10°) | `Button 3` (X) | `A` | `O` |
+| **Snap Gripper Closed** (95°) | `Button 2` (Circle) | `B` | `C` |
+| **Print Calibration Report** | `Button 1` (Triangle) | `Y` | `Y` |
+| **Move Arm X / Y** | Left Thumbstick | Left Thumbstick | `W`/`S` (X), `A`/`D` (Y) |
+| **Move Arm Z (Elevation)** | Right Stick Vertical | Right Stick Vertical | `R` (Up) / `F` (Down) |
+| **Rotate Wrist** | Right Stick Horizontal | Right Stick Horizontal | `Q` (CCW) / `E` (CW) |
+| **Switch Mode (IK <-> Joint)** | `Select` (Button 9) | `Back / View` | `M` |
+| **Toggle Speed (Normal <-> Slow)** | `Start` (Button 10) | `Start / Menu` | `P` |
+| **Reset to Ready Pose** | `Button 4` (Square) | `X` | `H` |
+
+### Gripper Calibration Workflow
+
+1. Start the simulation (`ros2 launch unoq_braccio_bringup sim.launch.py`) or hardware bridge.
+2. Launch `manual_control`.
+3. Jog the arm over a cube and descend until the fingers surround the cube center.
+4. Use the gripper step buttons (`R1`/`RB` or `]`) to pinch the cube until it is firmly gripped.
+5. Press **`Y`** (or Triangle on Ucom). The terminal prints a formatted calibration report with the exact values to copy & paste into `braccio_kinematics.py` (`GRIPPER_CLOSED = ...`) and `braccio_workspace.py` (`CUBE_CENTRE_Z = ...`).
 
 ## Command Protocol
 

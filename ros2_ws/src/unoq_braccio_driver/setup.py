@@ -37,6 +37,7 @@ setup(
             "sim_gripper_detector = unoq_braccio_driver.sim_gripper_detector:main",
             "workspace_markers = unoq_braccio_driver.workspace_markers:main",
             "pick_place_demo = unoq_braccio_driver.pick_place_demo:main",
+            "manual_control = unoq_braccio_driver.manual_control:main",
         ],
     },
 )
