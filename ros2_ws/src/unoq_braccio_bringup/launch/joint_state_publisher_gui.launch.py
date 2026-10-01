@@ -6,6 +6,7 @@ from launch.actions import DeclareLaunchArgument
 from launch.conditions import IfCondition
 from launch.substitutions import Command, LaunchConfiguration
 from launch_ros.actions import Node
+from launch_ros.parameter_descriptions import ParameterValue
 
 
 def generate_launch_description():
@@ -26,15 +27,18 @@ def generate_launch_description():
     )
 
     robot_description = {
-        "robot_description": Command(
-            [
-                "xacro ",
-                xacro_path,
-                " mesh_dir:=",
-                mesh_dir,
-                # left_gripper mimics gripper: one slider drives both fingers.
-                " gui_mimic:=true",
-            ]
+        "robot_description": ParameterValue(
+            Command(
+                [
+                    "xacro ",
+                    xacro_path,
+                    " mesh_dir:=",
+                    mesh_dir,
+                    # left_gripper mimics gripper, so one slider drives both fingers.
+                    " gui_mimic:=true",
+                ]
+            ),
+            value_type=str,
         )
     }
 

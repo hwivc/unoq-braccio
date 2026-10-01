@@ -25,15 +25,20 @@ def generate_launch_description():
     controllers_path = os.path.join(share, "config", "controllers.yaml")
     mesh_dir = os.path.join(share, "meshes", "braccio_stedden")
     robot_description = {
-        "robot_description": Command(
-            [
-                "xacro ",
-                xacro_path,
-                " controllers_file:=",
-                controllers_path,
-                " mesh_dir:=",
-                mesh_dir,
-            ]
+        # value_type=str: otherwise launch_ros parses the URDF as YAML and
+        # fails on any ": " in an XML comment.
+        "robot_description": ParameterValue(
+            Command(
+                [
+                    "xacro ",
+                    xacro_path,
+                    " controllers_file:=",
+                    controllers_path,
+                    " mesh_dir:=",
+                    mesh_dir,
+                ]
+            ),
+            value_type=str,
         ),
         "use_sim_time": True,
     }
