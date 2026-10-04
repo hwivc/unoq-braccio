@@ -222,9 +222,34 @@ dimensions and inertias are approximate. The pick blocks and bins are there for
 vision and workflow testing; grasp physics still needs tuning before relying on
 it for realistic pick-and-place contact.
 
-Grasp physics (finger friction on a 30 mm cube) has not been tuned; if a
-block slips, adjust the finger geometry or `GRIPPER_CLOSED` in
-`braccio_kinematics.py`.
+## Grasp assist
+
+Finger friction alone does not hold a cube reliably in Gazebo, so the
+simulation welds a grasped cube to the wrist instead. Each cube has a
+`DetachableJoint` in `urdf/braccio.urdf.xacro` (parent `wrist_roll_link`),
+and `sim_grasp_attacher` drives them from one topic:
+
+```bash
+ros2 topic pub --once /braccio/grasp std_msgs/msg/String "{data: 'grasp:red'}"
+ros2 topic pub --once /braccio/grasp std_msgs/msg/String "{data: release}"
+ros2 topic echo /braccio/grasp_state
+```
+
+`pick_place_demo` sends `grasp:<colour>` once the fingers have closed on the
+cube and `release` just before opening them over the bin. On hardware nothing
+subscribes to `/braccio/grasp`, so the same node runs there unchanged and the
+real fingers hold the cube.
+
+In Gazebo Harmonic every `DetachableJoint` attaches as soon as the robot
+spawns. `sim_grasp_attacher` keeps sending detach requests until each cube
+reports `detached`, so all cubes are free a moment after start-up. If cubes
+move with the arm, check that node is running and
+`ros2 topic echo /sim/grasp/red_cube/state` reports `detached`.
+
+The welded cube is held at whatever pose it had when grasped, so a
+misaligned grasp still carries the cube, just off-centre. The cube colour
+comes from the overhead detection, so the simulation does not check that the
+cube is actually between the fingers.
 
 ## Reference
 

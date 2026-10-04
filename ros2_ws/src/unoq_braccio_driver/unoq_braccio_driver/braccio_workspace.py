@@ -76,6 +76,24 @@ CUBES = {
     "yellow": (0.20, -0.01),
 }
 
+# --- simulated grasp -----------------------------------------------------------------
+# Gazebo does not hold a cube by finger friction reliably, so in simulation a
+# grasped cube is welded to the wrist with a DetachableJoint (one per cube in
+# braccio.urdf.xacro) and let go again on release. sim_grasp_attacher drives
+# them; these names must match the xacro (test/test_workspace.py checks it).
+GRASP_PARENT_LINK = "wrist_roll_link"
+
+
+def cube_model(color: str) -> str:
+    """Gazebo model name of the cube of ``color``."""
+    return f"{color}_cube"
+
+
+def grasp_topic(color: str, action: str) -> str:
+    """Gazebo/ROS topic of a cube's DetachableJoint: attach, detach or state."""
+    return f"/sim/grasp/{cube_model(color)}/{action}"
+
+
 # Slots inside a bin so several cubes do not land on the same spot.
 BIN_SLOT_OFFSETS = ((-0.02, -0.02), (0.02, -0.02), (-0.02, 0.02), (0.02, 0.02))
 

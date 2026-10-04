@@ -35,6 +35,7 @@ setup(
             "ik_pose_demo = unoq_braccio_driver.ik_pose_demo:main",
             "sim_cube_detector = unoq_braccio_driver.sim_cube_detector:main",
             "sim_gripper_detector = unoq_braccio_driver.sim_gripper_detector:main",
+            "sim_grasp_attacher = unoq_braccio_driver.sim_grasp_attacher:main",
             "workspace_markers = unoq_braccio_driver.workspace_markers:main",
             "pick_place_demo = unoq_braccio_driver.pick_place_demo:main",
             "manual_control = unoq_braccio_driver.manual_control:main",

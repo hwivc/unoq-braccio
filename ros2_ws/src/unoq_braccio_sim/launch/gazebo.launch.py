@@ -15,7 +15,7 @@ from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
 from launch_ros.substitutions import FindPackageShare
 
-from unoq_braccio_driver.braccio_workspace import CAMERA_XYZ
+from unoq_braccio_driver.braccio_workspace import CAMERA_XYZ, CUBES, grasp_topic
 
 
 def generate_launch_description():
@@ -91,6 +91,17 @@ def generate_launch_description():
             "/vision/overhead/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
             "/vision/gripper/image_raw@sensor_msgs/msg/Image[gz.msgs.Image",
             "/vision/gripper/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo",
+        ]
+        # Grasp assist (see sim_grasp_attacher): attach/detach requests go
+        # ROS -> Gazebo, each cube's DetachableJoint state comes back.
+        + [
+            arg
+            for color in CUBES
+            for arg in (
+                f"{grasp_topic(color, 'attach')}@std_msgs/msg/Empty]gz.msgs.Empty",
+                f"{grasp_topic(color, 'detach')}@std_msgs/msg/Empty]gz.msgs.Empty",
+                f"{grasp_topic(color, 'state')}@std_msgs/msg/String[gz.msgs.StringMsg",
+            )
         ],
         parameters=[sim_time],
         output="screen",
@@ -132,6 +143,13 @@ def generate_launch_description():
         package="unoq_braccio_driver",
         executable="joint_trajectory_bridge",
         name="unoq_braccio_joint_trajectory_bridge",
+        parameters=[sim_time],
+        output="screen",
+    )
+    grasp_attacher = Node(
+        package="unoq_braccio_driver",
+        executable="sim_grasp_attacher",
+        name="sim_grasp_attacher",
         parameters=[sim_time],
         output="screen",
     )
@@ -213,6 +231,7 @@ def generate_launch_description():
                 OnProcessExit(target_action=joint_state_broadcaster, on_exit=[arm_controller])
             ),
             trajectory_bridge,
+            grasp_attacher,
             joint_state_simulator,
             cube_detector,
             gripper_detector,

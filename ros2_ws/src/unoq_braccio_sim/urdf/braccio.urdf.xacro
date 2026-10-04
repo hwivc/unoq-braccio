@@ -295,6 +295,28 @@
   <xacro:finger_friction link="right_gripper_link"/>
   <xacro:finger_friction link="left_gripper_link"/>
 
+  <!-- Grasp assist. Finger friction alone does not hold a cube reliably in
+       Gazebo, so a grasped cube is welded to the wrist with a DetachableJoint
+       and let go on release (sim_grasp_attacher drives the topics; names must
+       match braccio_workspace.grasp_topic). Note: in Gazebo Harmonic every
+       DetachableJoint attaches as soon as the robot spawns; sim_grasp_attacher
+       detaches them all straight away. -->
+  <xacro:macro name="cube_grasp" params="color">
+    <gazebo>
+      <plugin filename="gz-sim-detachable-joint-system" name="gz::sim::systems::DetachableJoint">
+        <parent_link>wrist_roll_link</parent_link>
+        <child_model>${color}_cube</child_model>
+        <child_link>link</child_link>
+        <attach_topic>/sim/grasp/${color}_cube/attach</attach_topic>
+        <detach_topic>/sim/grasp/${color}_cube/detach</detach_topic>
+        <output_topic>/sim/grasp/${color}_cube/state</output_topic>
+      </plugin>
+    </gazebo>
+  </xacro:macro>
+  <xacro:cube_grasp color="red"/>
+  <xacro:cube_grasp color="blue"/>
+  <xacro:cube_grasp color="yellow"/>
+
   <!-- Gripper-mounted camera (matches the real Grove Vision AI on the gripper). -->
   <gazebo reference="camera_link">
     <sensor name="gripper_camera" type="camera">

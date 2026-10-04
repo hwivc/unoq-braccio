@@ -275,6 +275,30 @@ def test_pixel_to_table_error_under_2mm_across_pick_sector():
     assert worst < 0.002, worst
 
 
+def test_every_cube_has_a_grasp_joint_matching_the_workspace_module():
+    xacro_ns = "{http://www.ros.org/wiki/xacro}"
+    robot = ET.parse(URDF).getroot()
+    macro = next(m for m in robot.iter(f"{xacro_ns}macro") if m.get("name") == "cube_grasp")
+    plugin = macro.find("gazebo/plugin")
+    assert plugin.get("name") == "gz::sim::systems::DetachableJoint"
+    links = {link.get("name") for link in robot.iter("link")}
+    assert plugin.find("parent_link").text == ws.GRASP_PARENT_LINK in links
+
+    colors = [c.get("color") for c in robot.iter(f"{xacro_ns}cube_grasp")]
+    assert sorted(colors) == sorted(ws.CUBES), colors
+    models = _models()
+    for color in colors:
+        def expand(tag, c=color):
+            return plugin.find(tag).text.replace("${color}", c)
+
+        assert expand("child_model") == ws.cube_model(color)
+        model = models[ws.cube_model(color)]
+        assert model.find(f"link[@name='{expand('child_link')}']") is not None, color
+        for action, tag in (("attach", "attach_topic"), ("detach", "detach_topic"),
+                            ("state", "output_topic")):
+            assert expand(tag) == ws.grasp_topic(color, action), (color, tag)
+
+
 if __name__ == "__main__":
     failed = 0
     for name, fn in sorted(globals().items()):

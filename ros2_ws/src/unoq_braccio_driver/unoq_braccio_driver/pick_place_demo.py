@@ -9,7 +9,9 @@ state machine and dropped in the bin that matches its colour.
 
 State (String) is published on /task/state and details (JSON) on /task/current.
 Commands go out on /braccio/joint_command, so the same node drives Gazebo or
-the hardware bridge.
+the hardware bridge. Grasp/release is also announced on /braccio/grasp; in
+simulation sim_grasp_attacher welds the cube to the wrist on that, on
+hardware nothing listens and the fingers alone hold the cube.
 """
 
 import json
@@ -65,10 +67,12 @@ class PickPlaceDemo(Node):
         # False: a failed gripper-camera check only warns. True: it aborts the cube.
         self.declare_parameter("strict_gripper_verify", False)
         self.declare_parameter("min_grasp_area_frac", 0.02)
+        self.declare_parameter("grasp_settle", 0.3)   # let the sim weld the cube before lifting
 
         self.command = self.create_publisher(JointState, "/braccio/joint_command", 10)
         self.request = self.create_publisher(String, "/vision/detect_request", 10)
         self.gripper_request = self.create_publisher(String, "/vision/gripper/detect_request", 10)
+        self.grasp_pub = self.create_publisher(String, "/braccio/grasp", 10)
         self.state_pub = self.create_publisher(String, "/task/state", 10)
         self.current_pub = self.create_publisher(String, "/task/current", 10)
         self.create_subscription(String, "/vision/cube_target", self.on_overhead, 10)
@@ -114,6 +118,16 @@ class PickPlaceDemo(Node):
         msg.position = [float(v) for v in pose]
         self.command.publish(msg)
         time.sleep(float(self.get_parameter("step_wait").value) if wait is None else wait)
+
+    def grasp(self, color: str) -> None:
+        """Announce that ``color`` is between the closed fingers (sim welds it)."""
+        self.grasp_pub.publish(String(data=f"grasp:{color}"))
+        time.sleep(float(self.get_parameter("grasp_settle").value))
+
+    def release(self) -> None:
+        """Announce that the held cube is being let go (sim unwelds it)."""
+        self.grasp_pub.publish(String(data="release"))
+        time.sleep(float(self.get_parameter("grasp_settle").value))
 
     def ik(self, x, y, z, gripper, wrist_rotation=90):
         pose = solve_ik(x, y, z, gripper, wrist_rotation)
@@ -197,11 +211,13 @@ class PickPlaceDemo(Node):
         self.move(down)
         self.publish_state(State.GRASP)
         self.move(grip, wait=grip_wait)
+        self.grasp(color)
         self.publish_state(State.LIFT)
         self.move(lift)
 
         if not self.gripper_check(State.VERIFY_GRASP, color, min_frac=grasp_frac):
             self.publish_state(State.VERIFY_FAILED, error="gripper camera: cube not held")
+            self.release()
             self.move(self.ik(x, y, ws.HOVER_Z, GRIPPER_OPEN))
             return False
 
@@ -210,6 +226,7 @@ class PickPlaceDemo(Node):
         self.publish_state(State.LOWER)
         self.move(into_bin)
         self.publish_state(State.RELEASE)
+        self.release()
         self.move(release, wait=grip_wait)
         self.publish_state(State.RETREAT)
         self.move(retreat)
@@ -224,6 +241,7 @@ class PickPlaceDemo(Node):
         home[5] = GRIPPER_OPEN
 
         self.publish_state(State.GO_HOME)
+        self.release()  # nothing should be held from an earlier, interrupted run
         self.move(home)
 
         self.publish_state(State.DETECTING)
@@ -246,6 +264,7 @@ class PickPlaceDemo(Node):
                     placed.append(cube["color"])
             except Exception as exc:  # keep going with the next cube
                 self.get_logger().error(f"{cube['color']}: {exc}")
+                self.release()
             self.publish_state(State.GO_HOME)
             self.move(home)
 
