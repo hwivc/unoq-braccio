@@ -75,6 +75,9 @@ ros2 run unoq_braccio_driver manual_control --ros-args -p input_type:=keyboard
 ros2 topic echo /braccio/firmware_status
 ```
 
+For camera-driven pick and place on the real arm (USB webcam or a phone over
+WiFi) see [camera.md](camera.md).
+
 ## Test the board without ROS
 
 Open the Arduino Serial Monitor at **115200 baud**, line ending **Newline**,

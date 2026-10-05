@@ -18,6 +18,7 @@ published per request, from the next frame received.
 """
 
 import json
+import os
 
 import rclpy
 from rclpy.node import Node
@@ -32,6 +33,10 @@ class SimGripperDetector(Node):
     def __init__(self) -> None:
         super().__init__("sim_gripper_detector")
         self.declare_parameter("min_area_frac", 0.005)
+        self.declare_parameter("workspace_config", "")  # "" = simulated cube colours
+        config = str(self.get_parameter("workspace_config").value)
+        if config:
+            ws.load_config(os.path.expanduser(config))
         self.pending = None
         self.create_subscription(Image, "/vision/gripper/image_raw", self.on_image, 5)
         self.create_subscription(String, "/vision/gripper/detect_request", self.on_request, 10)

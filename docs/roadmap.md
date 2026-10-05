@@ -125,12 +125,11 @@ In order of value. The first one makes the rest easier.
    [two_arm_braccio_system_architecture.md](two_arm_braccio_system_architecture.md)),
    and a conveyor belt with moving cubes.
 
-### Needed before pick and place works on the real arm
+### Real-arm follow-ups
 
-- **Camera calibration.** In the sim the camera position is known exactly; on
-  a real table it is not. Calibrate the lens with a checkerboard (ROS
-  `camera_calibration`), then map table to arm with ArUco markers or by
-  touching the arm tip to known points (the `calibrate()` approach in
-  `learn_from/braccio_moveit_gazebo`).
+- Camera calibration is done: a table homography from 4-5 marked points
+  (`table_calibration`, [camera.md](camera.md)). A later option is
+  calibrating by touching the arm tip to points instead of marking them (the
+  `calibrate()` approach in `learn_from/braccio_moveit_gazebo`).
 - **Per-joint servo offsets** in a YAML file, and `GRIPPER_CLOSED` tuned for
   real cubes (there is no grasp assist on hardware).

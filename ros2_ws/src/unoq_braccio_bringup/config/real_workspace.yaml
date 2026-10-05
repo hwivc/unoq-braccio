@@ -1,0 +1,53 @@
+# Real-arm workspace. The simulation never reads this file.
+#
+# Coordinates are metres on the table, measured from the CENTRE of the arm's
+# base: x straight forward (the direction the arm faces at base=90), y to the
+# arm's left. Measure with a ruler or tape and keep the numbers in metres.
+#
+#              +x (forward)
+#               ^
+#               |
+#    +y  <----[ARM]        (looking down from above)
+#
+# After editing, rebuild (colcon build) or pass the file directly:
+#   ros2 launch unoq_braccio_bringup real.launch.py workspace_config:=/path/to/this.yaml
+
+# Edge length of your cubes.
+cube_size: 0.03
+
+# Fingertip height while carrying a cube between places.
+hover_z: 0.14
+
+# Gripper servo angles (degrees). Tune gripper_closed with manual_control
+# (docs/manual_control.md) so your cube is held firmly but not crushed.
+gripper_open: 10
+gripper_closed: 95
+
+# Cubes are only picked inside this rectangle (centre x, y and size).
+pick_area: {x: 0.225, y: -0.09, size_x: 0.15, size_y: 0.23}
+
+# Where each colour of cube is dropped. Bins are NOT looked for by the camera
+# on the real arm; these positions are used as measured. size/height are the
+# bin's footprint and wall height (metres), used for the drop height.
+bins:
+  - {name: red_bin,    cube_color: red,    x: 0.2255, y: 0.082, size: 0.08, height: 0.02}
+  - {name: blue_bin,   cube_color: blue,   x: 0.154,  y: 0.184, size: 0.08, height: 0.02}
+  - {name: yellow_bin, cube_color: yellow, x: 0.0417, y: 0.236, size: 0.08, height: 0.02}
+
+# Camera calibration marks (table_calibration). Mark these points on the
+# table, then the tool asks you to put a cube on each one in turn. Spread
+# them over the area the camera must measure; at least 4, not in a line.
+calibration_points:
+  - [0.15, -0.15]
+  - [0.30, -0.15]
+  - [0.30,  0.10]
+  - [0.15,  0.10]
+  - [0.22, -0.02]
+
+# Cube colours as OpenCV HSV ranges (H 0-179, S and V 0-255): [[low], [high]].
+# Real lighting differs from the simulation; if a cube is not boxed, or the
+# wrong colour is boxed, widen or shift its range here.
+cube_hsv:
+  red:    [[[0, 120, 60], [8, 255, 255]], [[170, 120, 60], [179, 255, 255]]]
+  blue:   [[[100, 120, 50], [130, 255, 255]]]
+  yellow: [[[20, 100, 80], [35, 255, 255]]]

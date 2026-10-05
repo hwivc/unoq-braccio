@@ -12,6 +12,8 @@ faces +x. +y is to the arm's left.
 import math
 from dataclasses import dataclass
 
+from unoq_braccio_driver.braccio_kinematics import GRIPPER_CLOSED, GRIPPER_OPEN
+
 # --- cubes --------------------------------------------------------------------
 CUBE_SIZE = 0.03            # 30 mm cube
 CUBE_CENTRE_Z = CUBE_SIZE / 2.0
@@ -113,6 +115,8 @@ BIN_HSV = {
 
 # --- arm targets ---------------------------------------------------------------------
 HOVER_Z = 0.14              # fingertip height while travelling
+# GRIPPER_OPEN / GRIPPER_CLOSED (imported above) are re-exported so a real-arm
+# config can override them per gripper and cube.
 RELEASE_MARGIN = 0.02       # gap above a bin top when the cube is let go
 
 
@@ -148,3 +152,99 @@ def pixel_to_table(u, v, fx, fy, cx, cy, cam_x, cam_y, height):
 def table_to_pixel(x, y, z, fx, fy, cx, cy, cam_x, cam_y, cam_z):
     depth = cam_z - z
     return (cx - (y - cam_y) / depth * fx, cy - (x - cam_x) / depth * fy)
+
+
+# --- real-arm configuration ----------------------------------------------------------
+# Everything above describes the simulated workspace. On the real arm the cube
+# size, bins, pick area and gripper differ, so load_config() replaces them from
+# a YAML file (unoq_braccio_bringup/config/real_workspace.yaml). Every ROS node
+# is its own process, so this only changes the node that calls it.
+
+# Where to put a cube while calibrating the overhead camera (table_calibration).
+CALIBRATION_POINTS = ((0.15, -0.15), (0.30, -0.15), (0.30, 0.10), (0.15, 0.10), (0.22, -0.02))
+
+
+def _pair(value, what):
+    try:
+        x, y = (float(v) for v in value)
+    except (TypeError, ValueError):
+        raise ValueError(f"{what} must be [x, y] in metres, got {value!r}") from None
+    return x, y
+
+
+def apply_config(config: dict) -> None:
+    """Replace the workspace constants with values from a config dict.
+
+    Keys (all optional): ``cube_size``, ``hover_z``, ``gripper_open``,
+    ``gripper_closed``, ``pick_area`` {x, y, size_x, size_y}, ``bins`` (list of
+    {name, cube_color, x, y, size?, height?}), ``cube_hsv``
+    {colour: [[low_hsv, high_hsv], ...]} and ``calibration_points`` [[x, y], ...].
+    Raises ValueError with a readable message on a malformed entry.
+    """
+    global CUBE_SIZE, CUBE_CENTRE_Z, HOVER_Z, GRIPPER_OPEN, GRIPPER_CLOSED
+    global PICK_SECTOR, BINS, BIN_BY_CUBE_COLOR, BIN_BY_NAME, CUBE_HSV, CALIBRATION_POINTS
+
+    config = config or {}
+    if "cube_size" in config:
+        CUBE_SIZE = float(config["cube_size"])
+        CUBE_CENTRE_Z = CUBE_SIZE / 2.0
+    if "hover_z" in config:
+        HOVER_Z = float(config["hover_z"])
+    if "gripper_open" in config:
+        GRIPPER_OPEN = int(config["gripper_open"])
+    if "gripper_closed" in config:
+        GRIPPER_CLOSED = int(config["gripper_closed"])
+    if "pick_area" in config:
+        area = config["pick_area"]
+        try:
+            PICK_SECTOR = Rect(float(area["x"]), float(area["y"]),
+                               float(area["size_x"]), float(area["size_y"]))
+        except (KeyError, TypeError, ValueError):
+            raise ValueError("pick_area needs x, y, size_x and size_y in metres") from None
+    if "bins" in config:
+        bins = []
+        for entry in config["bins"]:
+            try:
+                bins.append(Bin(
+                    name=str(entry["name"]),
+                    cube_color=str(entry["cube_color"]),
+                    centre=(float(entry["x"]), float(entry["y"])),
+                    size=float(entry.get("size", 0.08)),
+                    height=float(entry.get("height", 0.02)),
+                ))
+            except (KeyError, TypeError, ValueError):
+                raise ValueError(
+                    f"each bin needs name, cube_color, x and y (size, height optional): {entry!r}"
+                ) from None
+        BINS = tuple(bins)
+        BIN_BY_CUBE_COLOR = {b.cube_color: b for b in BINS}
+        BIN_BY_NAME = {b.name: b for b in BINS}
+    if "cube_hsv" in config:
+        hsv = {}
+        for color, ranges in config["cube_hsv"].items():
+            try:
+                hsv[str(color)] = [
+                    (tuple(int(v) for v in low), tuple(int(v) for v in high))
+                    for low, high in ranges
+                ]
+            except (TypeError, ValueError):
+                raise ValueError(
+                    f"cube_hsv.{color} must be a list of [[h, s, v], [h, s, v]] ranges"
+                ) from None
+        CUBE_HSV = hsv
+    if "calibration_points" in config:
+        CALIBRATION_POINTS = tuple(
+            _pair(p, "calibration_points entry") for p in config["calibration_points"]
+        )
+        if len(CALIBRATION_POINTS) < 4:
+            raise ValueError("calibration_points needs at least 4 points")
+
+
+def load_config(path: str) -> dict:
+    """Read a workspace YAML file and apply it. Returns the parsed dict."""
+    import yaml
+
+    with open(path, encoding="utf-8") as handle:
+        config = yaml.safe_load(handle) or {}
+    apply_config(config)
+    return config

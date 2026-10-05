@@ -7,6 +7,10 @@ state machine and dropped in the bin that matches its colour.
     ros2 run unoq_braccio_driver pick_place_demo
     ros2 run unoq_braccio_driver pick_place_demo --ros-args -p colors:="[blue]"
 
+The defaults are the simulation. On the real arm (real_pick_place.launch.py)
+``workspace_config`` loads the real cube size, bins and gripper values, and
+``use_gripper_camera:=false`` skips the two gripper-camera checks.
+
 State (String) is published on /task/state and details (JSON) on /task/current.
 Commands go out on /braccio/joint_command, so the same node drives Gazebo or
 the hardware bridge. Grasp/release is also announced on /braccio/grasp; in
@@ -15,6 +19,7 @@ hardware nothing listens and the fingers alone hold the cube.
 """
 
 import json
+import os
 import threading
 import time
 from enum import Enum
@@ -25,12 +30,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from unoq_braccio_driver import braccio_workspace as ws
-from unoq_braccio_driver.braccio_kinematics import (
-    GRIPPER_CLOSED,
-    GRIPPER_OPEN,
-    grasp_wrist_rotation,
-    solve_ik,
-)
+from unoq_braccio_driver.braccio_kinematics import grasp_wrist_rotation, solve_ik
 from unoq_braccio_driver.braccio_model import JOINT_NAMES, POSES
 
 
@@ -68,6 +68,13 @@ class PickPlaceDemo(Node):
         self.declare_parameter("strict_gripper_verify", False)
         self.declare_parameter("min_grasp_area_frac", 0.02)
         self.declare_parameter("grasp_settle", 0.3)   # let the sim weld the cube before lifting
+        self.declare_parameter("use_gripper_camera", True)
+        self.declare_parameter("workspace_config", "")  # "" = simulated layout
+
+        config = str(self.get_parameter("workspace_config").value)
+        if config:
+            ws.load_config(os.path.expanduser(config))
+            self.get_logger().info(f"Workspace from {config}")
 
         self.command = self.create_publisher(JointState, "/braccio/joint_command", 10)
         self.request = self.create_publisher(String, "/vision/detect_request", 10)
@@ -153,6 +160,8 @@ class PickPlaceDemo(Node):
 
     def gripper_check(self, state: State, color: str, min_frac: float) -> bool:
         """Gripper-camera confirmation. Only aborts when strict_gripper_verify."""
+        if not bool(self.get_parameter("use_gripper_camera").value):
+            return True  # no gripper camera: nothing to check
         seen = self.gripper_look(color)
         ok = seen is not None and seen["area_frac"] >= min_frac
         self.publish_state(state, gripper_seen=seen, gripper_ok=ok)
@@ -187,15 +196,15 @@ class PickPlaceDemo(Node):
             # Roll the wrist so the fingers close square to the cube's faces
             # (cubes sit axis-aligned) rather than across its diagonal, and
             # keep that roll for the whole pick so the cube is not twisted.
-            roll = grasp_wrist_rotation(self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_OPEN))
-            above = self.ik(x, y, ws.HOVER_Z, GRIPPER_OPEN, roll)
-            down = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_OPEN, roll)
-            grip = self.ik(x, y, ws.CUBE_CENTRE_Z, GRIPPER_CLOSED, roll)
-            lift = self.ik(x, y, ws.HOVER_Z, GRIPPER_CLOSED, roll)
-            over_bin = self.ik(bx, by, ws.HOVER_Z, GRIPPER_CLOSED, roll)
-            into_bin = self.ik(bx, by, ws.release_z(bin_), GRIPPER_CLOSED, roll)
-            release = self.ik(bx, by, ws.release_z(bin_), GRIPPER_OPEN, roll)
-            retreat = self.ik(bx, by, ws.HOVER_Z, GRIPPER_OPEN, roll)
+            roll = grasp_wrist_rotation(self.ik(x, y, ws.CUBE_CENTRE_Z, ws.GRIPPER_OPEN))
+            above = self.ik(x, y, ws.HOVER_Z, ws.GRIPPER_OPEN, roll)
+            down = self.ik(x, y, ws.CUBE_CENTRE_Z, ws.GRIPPER_OPEN, roll)
+            grip = self.ik(x, y, ws.CUBE_CENTRE_Z, ws.GRIPPER_CLOSED, roll)
+            lift = self.ik(x, y, ws.HOVER_Z, ws.GRIPPER_CLOSED, roll)
+            over_bin = self.ik(bx, by, ws.HOVER_Z, ws.GRIPPER_CLOSED, roll)
+            into_bin = self.ik(bx, by, ws.release_z(bin_), ws.GRIPPER_CLOSED, roll)
+            release = self.ik(bx, by, ws.release_z(bin_), ws.GRIPPER_OPEN, roll)
+            retreat = self.ik(bx, by, ws.HOVER_Z, ws.GRIPPER_OPEN, roll)
         except ValueError as exc:
             self.publish_state(State.TARGET_UNREACHABLE, error=str(exc))
             return False
@@ -218,7 +227,7 @@ class PickPlaceDemo(Node):
         if not self.gripper_check(State.VERIFY_GRASP, color, min_frac=grasp_frac):
             self.publish_state(State.VERIFY_FAILED, error="gripper camera: cube not held")
             self.release()
-            self.move(self.ik(x, y, ws.HOVER_Z, GRIPPER_OPEN))
+            self.move(self.ik(x, y, ws.HOVER_Z, ws.GRIPPER_OPEN))
             return False
 
         self.publish_state(State.MOVE_TO_BIN, bin=bin_.name, bin_x=round(bx, 4), bin_y=round(by, 4))
@@ -238,7 +247,7 @@ class PickPlaceDemo(Node):
         time.sleep(1.0)  # let publishers and detectors discover each other
         wanted = [str(c).lower() for c in self.get_parameter("colors").value]
         home = list(POSES["ready"])
-        home[5] = GRIPPER_OPEN
+        home[5] = ws.GRIPPER_OPEN
 
         self.publish_state(State.GO_HOME)
         self.release()  # nothing should be held from an earlier, interrupted run

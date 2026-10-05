@@ -96,8 +96,36 @@ USB. The arm waits about 8 s after launch while the UNO resets and powers up
 its servos. Wiring, serial protocol and troubleshooting:
 [docs/hardware.md](docs/hardware.md).
 
-Camera-driven pick and place on the real arm still needs camera calibration
-([docs/roadmap.md](docs/roadmap.md)).
+### Real pick and place with a camera
+
+The overhead camera can be a USB webcam (`camera:=0`) or a WiFi stream, e.g.
+a phone running the IP Webcam app (`camera:=http://<phone-ip>:8080/video`).
+
+1. Measure your table into `ros2_ws/src/unoq_braccio_bringup/config/real_workspace.yaml`
+   (cube size, bin positions, calibration marks), then `colcon build`.
+2. Start the arm and camera:
+
+   ```bash
+   ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
+     camera:=http://192.168.1.192:8080/video
+   ```
+
+3. Calibrate the camera once (put a cube on each mark when asked), then restart step 2:
+
+   ```bash
+   ros2 run unoq_braccio_driver table_calibration
+   ```
+
+4. Sort the cubes:
+
+   ```bash
+   ros2 launch unoq_braccio_bringup real_pick_place.launch.py
+   ```
+
+No gripper camera is needed (`gripper_camera:=false` is the default; set it
+`true` with `gripper_camera_source:=1` on both launches if you add one). You do
+not measure the camera's height or angle; the calibration works that out.
+Full guide: [docs/camera.md](docs/camera.md).
 
 ## Move the arm
 
@@ -139,8 +167,9 @@ Keep API keys in `EDGE_IMPULSE_API_KEY`, never in committed files. Details:
 | Sim arm does not move | `ros2 topic hz /clock` (must tick) and `ros2 control list_controllers` |
 | Is anything commanding the arm? | `ros2 topic echo /braccio/joint_command` |
 | Real arm status | `ros2 topic echo /braccio/firmware_status` |
+| Real camera: where does it see the cubes? | `ros2 topic echo /vision/cube_target` |
 | Which serial port? | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio` |
-| Layout / IK / protocol checks (no ROS needed) | `python ros2_ws/src/unoq_braccio_driver/test/test_workspace.py` and `.../test/test_protocol.py` |
+| Layout / IK / protocol / calibration checks (no ROS needed) | `python ros2_ws/src/unoq_braccio_driver/test/test_workspace.py` (also `test_protocol.py`, `test_camera_calibration.py`) |
 
 ## Repository layout
 
@@ -160,6 +189,7 @@ app_lab/, web_app/               Arduino UNO Q apps and browser dashboard (alter
 | Topic | Where |
 |---|---|
 | Real arm: wiring, protocol, troubleshooting | [docs/hardware.md](docs/hardware.md) |
+| Real camera (USB / phone IP Webcam) and calibration | [docs/camera.md](docs/camera.md) |
 | Manual control and gripper calibration | [docs/manual_control.md](docs/manual_control.md) |
 | Simulation internals | [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_sim/README.md) |
 | Install on Windows / macOS / Linux | [docs/platform-setup.md](docs/platform-setup.md) |

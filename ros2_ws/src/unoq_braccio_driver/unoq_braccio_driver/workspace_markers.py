@@ -8,6 +8,7 @@ state as text above the arm.
 """
 
 import json
+import os
 
 import rclpy
 from geometry_msgs.msg import Point
@@ -31,6 +32,13 @@ STATE_RGB = {
 class WorkspaceMarkers(Node):
     def __init__(self) -> None:
         super().__init__("workspace_markers")
+        # Defaults are the simulation; the real arm passes its workspace YAML
+        # and turns off the simulated camera marker.
+        self.declare_parameter("workspace_config", "")
+        self.declare_parameter("show_camera", True)
+        config = str(self.get_parameter("workspace_config").value)
+        if config:
+            ws.load_config(os.path.expanduser(config))
         self.cubes = []
         self.state = "IDLE"
         self.target = None
@@ -83,19 +91,21 @@ class WorkspaceMarkers(Node):
                         (1, 1, 1), text="PICK"))
 
         for i, bin_ in enumerate(ws.BINS):
-            rgb = BIN_RGB[bin_.name]
+            rgb = BIN_RGB.get(bin_.name, (0.6, 0.6, 0.6))
             x, y = bin_.centre
             add(self.marker(10 + i, Marker.CUBE, x, y, bin_.height / 2, bin_.size, bin_.size,
                             bin_.height, rgb, 0.6))
             add(self.marker(20 + i, Marker.TEXT_VIEW_FACING, x, y, bin_.height + 0.04, 0, 0, 0.022,
                             (1, 1, 1), text=f"{bin_.cube_color.upper()} bin"))
 
-        cx, cy, cz = ws.CAMERA_XYZ
-        add(self.marker(30, Marker.CUBE, cx, cy, cz, 0.04, 0.03, 0.02, (0.1, 0.1, 0.1)))
-        # View axis down to the table.
-        line = self.marker(31, Marker.LINE_LIST, 0, 0, 0, 0.002, 0, 0, (0.3, 0.6, 1.0), 0.6)
-        line.points = [Point(x=float(cx), y=float(cy), z=float(cz)), Point(x=float(cx), y=float(cy), z=0.0)]
-        add(line)
+        if bool(self.get_parameter("show_camera").value):
+            cx, cy, cz = ws.CAMERA_XYZ
+            add(self.marker(30, Marker.CUBE, cx, cy, cz, 0.04, 0.03, 0.02, (0.1, 0.1, 0.1)))
+            # View axis down to the table.
+            line = self.marker(31, Marker.LINE_LIST, 0, 0, 0, 0.002, 0, 0, (0.3, 0.6, 1.0), 0.6)
+            line.points = [Point(x=float(cx), y=float(cy), z=float(cz)),
+                           Point(x=float(cx), y=float(cy), z=0.0)]
+            add(line)
 
         for i, cube in enumerate(self.cubes):
             rgb = CUBE_RGB.get(cube["color"], (0.5, 0.5, 0.5))

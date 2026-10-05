@@ -28,6 +28,13 @@ colour, so colour is decided afterwards by sampling pixels inside each box.
 Swapping in a different model only ever means changing the ``detector_backend``
 / ``model_path`` parameters below; nothing else in this file changes.
 
+Simulation needs no set-up: with the default parameters pixels are mapped to
+the table with the simulated camera's known pose and focal length. On the
+real arm, ``calibration_file`` points at the file ``table_calibration``
+writes (pixel -> table homography, see docs/camera.md) and
+``workspace_config`` at the real workspace YAML; ``detect_bins:=false`` uses
+the bin positions from that file instead of looking for bin colours.
+
 ``/vision/detect_request`` narrows which colours are *published* - it does not
 gate detection any more, since detection never stops. A publish there just
 sets which colour(s) count from then on; the rolling history for every colour
@@ -37,6 +44,7 @@ does not need to wait out a fresh window.
 
 import json
 import math
+import os
 import time
 
 import rclpy
@@ -53,6 +61,7 @@ from unoq_braccio_driver.color_vision import (
     to_hsv,
 )
 from unoq_braccio_driver.cube_model_backend import create_cube_detector
+from unoq_braccio_driver.table_projection import PinholeDownProjection, load_calibration
 
 # Re-exported for older imports / tests.
 pixel_to_table = ws.pixel_to_table
@@ -101,6 +110,27 @@ class SimCubeDetector(Node):
         # How much of a box must match a colour range to accept that colour.
         self.declare_parameter("color_min_frac", 0.15)
         self.declare_parameter("publish_annotated", True)
+        # Real arm only; the defaults are the simulation.
+        self.declare_parameter("calibration_file", "")   # "" = simulated camera pose
+        self.declare_parameter("workspace_config", "")   # "" = simulated layout
+        self.declare_parameter("detect_bins", True)      # False = bins from workspace_config
+
+        config = str(self.get_parameter("workspace_config").value)
+        if config:
+            ws.load_config(os.path.expanduser(config))
+            self.get_logger().info(f"Workspace from {config}")
+        self.calibration = None
+        calibration = str(self.get_parameter("calibration_file").value)
+        if calibration:
+            try:
+                self.calibration = load_calibration(os.path.expanduser(calibration))
+                self.get_logger().info(f"Camera calibration from {calibration}")
+            except (OSError, ValueError) as exc:
+                self.get_logger().error(
+                    f"No usable camera calibration ({exc}). Run table_calibration "
+                    "first; no cube positions will be published until then."
+                )
+        self.use_calibration = bool(calibration)
 
         self.info = None
         self.color_filter = ""
@@ -124,20 +154,38 @@ class SimCubeDetector(Node):
         self.color_filter = msg.data.strip().lower()
         self.get_logger().info(f"Publishing filter set to '{self.color_filter or 'all'}'")
 
-    def on_image(self, msg: Image) -> None:
+    def projection(self, rgb):
+        """(to_table(u, v, plane_z), pixels_per_metre(plane_z)) for this frame,
+        or None if the camera geometry is not known yet."""
+        if self.use_calibration:
+            if self.calibration is None:
+                return None
+            size = (rgb.shape[1], rgb.shape[0])
+            cal = self.calibration
+            return (lambda u, v, z: cal.to_table(u, v, frame_size=size),
+                    lambda z: cal.pixels_per_metre(frame_size=size))
         if self.info is None:
+            return None
+        pinhole = PinholeDownProjection(
+            self.info.k[0], self.info.k[4], self.info.k[2], self.info.k[5],
+            float(self.get_parameter("camera_x").value),
+            float(self.get_parameter("camera_y").value),
+            float(self.get_parameter("camera_z").value),
+        )
+        return pinhole.to_table, pinhole.pixels_per_metre
+
+    def on_image(self, msg: Image) -> None:
+        if not self.use_calibration and self.info is None:
             return
         rgb = image_to_rgb(msg)
         if rgb is None:
             self.get_logger().warning(f"Unsupported image encoding {msg.encoding}")
             return
+        projection = self.projection(rgb)
+        if projection is None:
+            return
+        to_table, pixels_per_metre = projection
         hsv = to_hsv(rgb)
-
-        fx, fy = self.info.k[0], self.info.k[4]
-        cx, cy = self.info.k[2], self.info.k[5]
-        cam_x = float(self.get_parameter("camera_x").value)
-        cam_y = float(self.get_parameter("camera_y").value)
-        cam_z = float(self.get_parameter("camera_z").value)
 
         if self.cube_detector is None:
             self.cube_detector = create_cube_detector(
@@ -146,8 +194,10 @@ class SimCubeDetector(Node):
                 conf=float(self.get_parameter("model_conf").value),
                 iou=float(self.get_parameter("model_iou").value),
                 cube_size_m=ws.CUBE_SIZE,
-                camera_fx=fx,
-                camera_height_m=cam_z - ws.CUBE_CENTRE_Z,
+                # Only the colour-blob fallback uses these, to size-filter
+                # blobs: cube width in pixels = size * pixels_per_metre.
+                camera_fx=pixels_per_metre(ws.CUBE_CENTRE_Z),
+                camera_height_m=1.0,
                 logger=self.get_logger(),
             )
 
@@ -167,19 +217,18 @@ class SimCubeDetector(Node):
             confident = color is not None and frac >= min_frac
             if confident:
                 u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                x, y = ws.pixel_to_table(
-                    u, v, fx, fy, cx, cy, cam_x, cam_y, cam_z - ws.CUBE_CENTRE_Z
-                )
+                x, y = to_table(u, v, ws.CUBE_CENTRE_Z)
                 self.cube_history.setdefault(color, []).append((now, x, y))
             if annotated is not None:
                 self._draw_box(annotated, (xi1, yi1, xi2, yi2), score, color if confident else None)
 
-        for bin_ in ws.BINS:
-            bin_px = bin_.size * fx / (cam_z - bin_.height)
-            for u, v, _ in find_blobs(
-                hsv, ws.BIN_HSV[bin_.name], 0.5 * bin_px ** 2, 1.6 * bin_px ** 2
-            ):
-                x, y = ws.pixel_to_table(u, v, fx, fy, cx, cy, cam_x, cam_y, cam_z - bin_.height)
+        for bin_ in ws.BINS if bool(self.get_parameter("detect_bins").value) else ():
+            ranges = ws.BIN_HSV.get(bin_.name)
+            if ranges is None:
+                continue  # a configured bin with no colour range: use its fixed position
+            bin_px = bin_.size * pixels_per_metre(bin_.height)
+            for u, v, _ in find_blobs(hsv, ranges, 0.5 * bin_px ** 2, 1.6 * bin_px ** 2):
+                x, y = to_table(u, v, bin_.height)
                 self.bin_history.setdefault(bin_.name, []).append((now, x, y))
 
         if annotated is not None:
@@ -229,6 +278,8 @@ class SimCubeDetector(Node):
                 continue
             biggest = max(cluster_samples(points, radius), key=len)
             if len(biggest) >= min_samples:
+                if name not in ws.BIN_BY_NAME:
+                    continue
                 bins[name] = {
                     "x": sum(p[0] for p in biggest) / len(biggest),
                     "y": sum(p[1] for p in biggest) / len(biggest),
