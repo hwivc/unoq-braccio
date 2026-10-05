@@ -92,8 +92,9 @@ Linux PC / Raspberry Pi 5 (ROS 2, cameras)  --USB-->  Arduino UNO + Braccio shie
    ```
 
 Power the servos from the shield's own 5 V supply (4 A or more), never from
-USB. The arm waits about 8 s after launch while the UNO resets and powers up
-its servos. Wiring, serial protocol and troubleshooting:
+USB. On power-up the arm stands straight up, and RViz shows it upright from the
+start; the arm then waits about 8 s while the UNO resets and gently powers
+up its servos. Wiring, serial protocol and troubleshooting:
 [docs/hardware.md](docs/hardware.md).
 
 ### Real pick and place with a camera

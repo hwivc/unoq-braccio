@@ -15,6 +15,7 @@ from unoq_braccio_driver.braccio_model import (  # noqa: E402
     JOINT_LIMITS,
     JOINT_NAMES,
     POSES,
+    START_POSE,
     command_line_from_positions,
 )
 from unoq_braccio_driver.braccio_protocol import parse_status, speed_command  # noqa: E402
@@ -67,7 +68,12 @@ def test_speed_command_is_clamped():
 def test_firmware_matches_joint_model():
     assert _firmware_array("MIN_LIMITS") == [JOINT_LIMITS[n].minimum for n in JOINT_NAMES]
     assert _firmware_array("MAX_LIMITS") == [JOINT_LIMITS[n].maximum for n in JOINT_NAMES]
-    assert _firmware_array("START_POSE") == POSES["rest"]
+    assert _firmware_array("START_POSE") == START_POSE
+
+
+def test_start_pose_is_standing_straight_up():
+    assert START_POSE == POSES["ready"]
+    assert START_POSE[:5] == [90, 90, 90, 90, 90]
 
 
 if __name__ == "__main__":

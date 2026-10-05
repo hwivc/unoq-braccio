@@ -16,7 +16,8 @@
     I   Identify: replies with the READY banner.
 
   Anything else replies ERR <reason>. The sketch prints the READY banner once
-  the servos are powered, about 6 s after reset.
+  the servos are powered, about 6 s after reset, followed by a STAT line with
+  the start pose: standing straight up (90 90 90 90 90, gripper 25).
 
   Motion is non-blocking: every joint is interpolated so all of them arrive
   together, and the serial port is read the whole time. The official Braccio
@@ -35,10 +36,13 @@ const int JOINTS = 6;
 const uint8_t SERVO_PINS[JOINTS] = {11, 10, 9, 6, 5, 3};
 const uint8_t SOFT_START_PIN = 12;
 
-// Keep in sync with JOINT_LIMITS and POSES["rest"] in braccio_model.py.
+// Keep in sync with JOINT_LIMITS and START_POSE in braccio_model.py.
 const int MIN_LIMITS[JOINTS] = {0, 15, 0, 0, 0, 10};
 const int MAX_LIMITS[JOINTS] = {180, 165, 180, 180, 180, 110};
-const int START_POSE[JOINTS] = {90, 45, 180, 180, 90, 10};
+// Power-on pose: standing straight up ("ready"), clear of the table and the
+// cubes. Every joint but the gripper is at 90, which is also the pulse the
+// Servo library sends by default on attach, so nothing jumps elsewhere first.
+const int START_POSE[JOINTS] = {90, 90, 90, 90, 90, 25};
 
 const int SPEED_MIN = 10;
 const int SPEED_MAX = 180;
@@ -241,7 +245,9 @@ void setup() {
   }
   softStart();
 
+  // Tell the host the arm is up and where it is, without waiting to be asked.
   Serial.println(BANNER);
+  printStatus();
 }
 
 void loop() {

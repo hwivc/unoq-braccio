@@ -35,6 +35,13 @@ POSES = {
     "wave": [60, 90, 90, 60, 120, 25],
 }
 
+# Power-on pose of the real arm: standing straight up, clear of the table.
+# The UNO firmware starts here (START_POSE in braccio_uno_firmware.ino, checked
+# by test_protocol.py), and the serial bridge reports it on /joint_states from
+# launch until the board sends its real position, so RViz shows the same.
+# The simulation also spawns in this pose.
+START_POSE = POSES["ready"]
+
 
 def clamp_degrees(name: str, value: float) -> int:
     limit = JOINT_LIMITS[name]

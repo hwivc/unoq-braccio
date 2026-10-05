@@ -47,8 +47,14 @@ scripts/flash_uno.sh /dev/ttyACM0 arduino:renesas_uno:minima   # UNO R4 Minima
 You can also open `firmware/braccio_uno_firmware/braccio_uno_firmware.ino` in
 the Arduino IDE (install the **Servo** library) and upload it.
 
-On power-up the arm moves to its start pose (`rest`: 90 45 180 180 90 10)
-and the servo power ramps up over about 6 seconds.
+On power-up the arm **stands straight up** (`ready`: 90 90 90 90 90, gripper
+25), clear of the table, while the servo power ramps up gently over about 6
+seconds. The UNO then reports that pose to ROS, and RViz shows the arm upright
+from the moment it starts.
+
+For a calm start, leave the arm roughly upright before switching the servo
+power on and keep the space around it clear: the servos move to the start
+pose as soon as they get power.
 
 ## 2. One-time Linux setup
 
@@ -119,14 +125,14 @@ The ROS `serial_bridge`:
 The firmware and ROS both clamp to these (`braccio_model.py`; a test checks
 the firmware matches):
 
-| Joint | Min | Max | Start pose |
+| Joint | Min | Max | Start pose (standing up) |
 |---|---:|---:|---:|
 | base | 0 | 180 | 90 |
-| shoulder | 15 | 165 | 45 |
-| elbow | 0 | 180 | 180 |
-| wrist_vertical | 0 | 180 | 180 |
+| shoulder | 15 | 165 | 90 |
+| elbow | 0 | 180 | 90 |
+| wrist_vertical | 0 | 180 | 90 |
 | wrist_rotation | 0 | 180 | 90 |
-| gripper | 10 | 110 | 10 |
+| gripper | 10 | 110 | 25 |
 
 The stock Braccio library caps the gripper at 73, which does not close this
 gripper, so the firmware drives the servos directly with `Servo.h`. Start

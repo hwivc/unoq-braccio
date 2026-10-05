@@ -16,6 +16,11 @@ servos for about 6 s. Nothing is sent until the firmware has answered (its
 READY banner, or a STAT reply to a probe), and the port is reopened if the
 cable is pulled. After a reset the arm is back at its start pose; the last
 command is deliberately not replayed.
+
+The firmware powers up standing straight up (braccio_model.START_POSE). Until
+the board reports its real position, /joint_states carries that start pose,
+so RViz and manual_control begin from the same upright arm instead of an
+empty or folded model.
 """
 
 import threading
@@ -28,7 +33,7 @@ from sensor_msgs.msg import JointState
 from std_msgs.msg import String
 
 from unoq_braccio_driver.braccio_kinematics import URDF_JOINT_NAMES, servo_positions_to_urdf
-from unoq_braccio_driver.braccio_model import JOINT_NAMES, POSES, command_line_from_positions
+from unoq_braccio_driver.braccio_model import JOINT_NAMES, START_POSE, command_line_from_positions
 from unoq_braccio_driver.braccio_protocol import (
     READY_PREFIX,
     parse_status,
@@ -61,7 +66,8 @@ class SerialBridge(Node):
         self.last_status_poll = 0.0
         self.last_command_sent = 0.0
         self.commanded = {}            # servo degrees by joint, from /braccio/joint_command
-        self.baseline = dict(zip(JOINT_NAMES, POSES["rest"]))  # firmware start pose
+        self.baseline = dict(zip(JOINT_NAMES, START_POSE))  # where the firmware powers up
+        self.have_status = False       # True once the board has reported its position
         self.dirty = False             # commanded has changed since the last send
         self.running = True
 
@@ -90,6 +96,14 @@ class SerialBridge(Node):
 
     def tick(self) -> None:
         now = time.monotonic()
+        if (not self.have_status
+                and now - self.last_status_poll >= float(self.get_parameter("status_period").value)):
+            # Nothing heard from the board yet: it is (re)starting into its
+            # start pose, so report that pose until it says otherwise.
+            self.last_status_poll = now
+            if bool(self.get_parameter("publish_joint_states").value):
+                self.publish_joint_states(START_POSE)
+
         if self.serial is None:
             if now - self.last_open_attempt >= float(self.get_parameter("reconnect_period").value):
                 self.last_open_attempt = now
@@ -189,6 +203,7 @@ class SerialBridge(Node):
             if not self.ready:
                 self.baseline = dict(zip(JOINT_NAMES, status["pos"]))
                 self.mark_ready(line)
+            self.have_status = True
             self.status_pub.publish(String(data=line))
             if bool(self.get_parameter("publish_joint_states").value):
                 self.publish_joint_states(status["pos"])
@@ -200,7 +215,8 @@ class SerialBridge(Node):
         """After a reset the arm is at its start pose: drop what was commanded."""
         self.commanded.clear()
         self.dirty = False
-        self.baseline = dict(zip(JOINT_NAMES, POSES["rest"]))
+        self.have_status = False
+        self.baseline = dict(zip(JOINT_NAMES, START_POSE))
 
     def mark_ready(self, line: str) -> None:
         self.ready = True
