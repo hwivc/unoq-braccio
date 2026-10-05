@@ -2,7 +2,22 @@
 
 This document reflects the current repo implementation.
 
-## Runtime Paths
+## Main Path: Arduino UNO over USB Serial
+
+```text
+ROS 2 host (Linux PC / Raspberry Pi 5)
+  -> hardware.launch.py
+  -> unoq_braccio_driver serial_bridge
+  -> USB serial, 115200 baud, text protocol (docs/hardware.md)
+  -> Arduino UNO running firmware/braccio_uno_firmware
+  -> Servo pins on Braccio shield
+```
+
+The bridge publishes the arm's reported position on `/joint_states` and the
+raw status line on `/braccio/firmware_status`. Everything below describes the
+alternative Arduino UNO Q set-up.
+
+## Runtime Paths (Arduino UNO Q)
 
 ### Web Dashboard Path
 

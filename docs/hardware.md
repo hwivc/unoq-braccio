@@ -1,46 +1,123 @@
-# Hardware Notes
+# Hardware: Arduino UNO + Braccio over USB serial
+
+```text
+Linux PC or Raspberry Pi 5 (Ubuntu 24.04, ROS 2 Jazzy, cameras)
+  -> USB cable -> Arduino UNO + Braccio shield -> 6 servos
+```
+
+The UNO only drives the servos. ROS 2, cameras and inverse kinematics run on
+the Linux machine.
+
+## Parts
+
+- Arduino UNO R3 (or a UNO R4 Minima / WiFi)
+- TinkerKit Braccio arm and Braccio shield
+- 5 V power supply for the shield, 4 A or more
+- USB cable to the Linux machine
 
 ## Wiring
 
-Use the Braccio shield in its standard configuration. The firmware relies on the
-official Braccio library pin assignments:
+Plug the Braccio shield onto the UNO and the servo cables into the shield:
 
-- M1: base
-- M2: shoulder
-- M3: elbow
-- M4: wrist vertical
-- M5: wrist rotation
-- M6: gripper
+| Shield | Joint | UNO pin |
+|---|---|---:|
+| M1 | base | 11 |
+| M2 | shoulder | 10 |
+| M3 | elbow | 9 |
+| M4 | wrist vertical | 6 |
+| M5 | wrist rotation | 5 |
+| M6 | gripper | 3 |
+| soft start | servo power ramp | 12 |
 
-Power the servos from the Braccio shield power input. Do not rely on USB power
-for the arm.
+Power the servos from the shield's 5 V input. **Never power the servos from
+USB, the UNO's 5 V pin or the Raspberry Pi.**
 
-## Control Modes
+## 1. Flash the firmware
 
-USB serial mode uses `firmware/unoq_braccio_firmware` and requires the ROS 2
-host to connect directly to the UNO Q USB serial port.
-
-Remote network mode uses `app_lab/braccio_remote_agent`. The App Lab app runs
-on the UNO Q, listens on TCP port `8765`, and forwards commands to the Braccio
-library through the UNO Q Bridge API. Use this mode when the arm should stay on
-Wi-Fi/Ethernet instead of being tethered to the ROS 2 host.
-
-Both modes support a status query:
-
-```text
-S
+```bash
+scripts/flash_uno.sh                         # UNO R3 on /dev/ttyACM0
+scripts/flash_uno.sh /dev/ttyUSB0            # clone board (CH340 chip)
+scripts/flash_uno.sh /dev/ttyACM0 arduino:renesas_uno:minima   # UNO R4 Minima
 ```
 
-The response reports uptime, command count, last move duration, last command
-time, and the last target angles. The stock Braccio servos do not report true
-motor telemetry such as current, torque, temperature, or measured position.
+```powershell
+.\scripts\flash_uno.ps1 -Port COM3           # Windows
+```
 
-## Conservative Joint Limits
+You can also open `firmware/braccio_uno_firmware/braccio_uno_firmware.ino` in
+the Arduino IDE (install the **Servo** library) and upload it.
 
-The firmware and ROS driver clamp commands to:
+On power-up the arm moves to its start pose (`rest`: 90 45 180 180 90 10)
+and the servo power ramps up over about 6 seconds.
 
-| Joint | Min | Max | Rest |
-| --- | ---: | ---: | ---: |
+## 2. One-time Linux setup
+
+```bash
+scripts/setup_uno_serial.sh
+```
+
+This gives the board a fixed name, `/dev/braccio`, and adds you to the
+`dialout` group (log out and back in afterwards).
+
+## 3. Run
+
+```bash
+ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio
+ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio speed:=40 rviz:=true
+```
+
+Then in another terminal:
+
+```bash
+ros2 run unoq_braccio_driver pose_demo --ros-args -p pose:=ready
+ros2 run unoq_braccio_driver ik_pose_demo --ros-args -p x:=0.20 -p y:=0.0 -p z:=0.10
+ros2 run unoq_braccio_driver manual_control --ros-args -p input_type:=keyboard
+ros2 topic echo /braccio/firmware_status
+```
+
+## Test the board without ROS
+
+Open the Arduino Serial Monitor at **115200 baud**, line ending **Newline**,
+and type:
+
+```text
+I                          -> READY BRACCIO_UNO 1
+S                          -> STAT pos=... target=... moving=0 speed=60 ...
+M 90 90 90 90 90 25        -> OK ... DONE      (arm stands up)
+V 30                       -> OK               (slower)
+H                          -> OK               (stop where it is)
+```
+
+## Serial protocol
+
+One text line per command, 115200 baud:
+
+| Command | Meaning | Reply |
+|---|---|---|
+| `M b s e wv wr g` | Move to servo angles (integer degrees, clamped to limits) | `OK` now, `DONE` on arrival |
+| `S` | Status | `STAT pos=.. target=.. moving=0/1 speed=.. moves=.. uptime_ms=..` |
+| `V n` | Speed of the furthest-moving joint, 10-180 deg/s | `OK` |
+| `H` | Hold: stop where the arm is | `OK` |
+| `I` | Identify | `READY BRACCIO_UNO 1` |
+
+Anything else replies `ERR <reason>`. Motion is non-blocking: all joints
+arrive together, and a new `M` during a move retargets smoothly.
+
+The ROS `serial_bridge`:
+
+- waits for the board to boot before sending (opening the port resets a UNO);
+- sends only the newest command when they arrive faster than it can send;
+- keeps the last angle for any joint a command leaves out;
+- reconnects if the cable is unplugged;
+- publishes the arm's real position on `/joint_states`.
+
+## Joint limits
+
+The firmware and ROS both clamp to these (`braccio_model.py`; a test checks
+the firmware matches):
+
+| Joint | Min | Max | Start pose |
+|---|---:|---:|---:|
 | base | 0 | 180 | 90 |
 | shoulder | 15 | 165 | 45 |
 | elbow | 0 | 180 | 180 |
@@ -48,8 +125,23 @@ The firmware and ROS driver clamp commands to:
 | wrist_rotation | 0 | 180 | 90 |
 | gripper | 10 | 110 | 10 |
 
-Tune these values for your arm after validating mechanical clearance.
+The stock Braccio library caps the gripper at 73, which does not close this
+gripper, so the firmware drives the servos directly with `Servo.h`. Start
+gripping at `95` and go towards `110` only if needed.
 
-The original Braccio examples often use `73` as the gripper close value, but
-this build exposes up to `110` because the mounted gripper did not fully close
-at `73`. Start with `95`, then increase toward `110` only as needed.
+## Troubleshooting
+
+| Problem | Check |
+|---|---|
+| `Cannot open /dev/...` | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio`; are you in `dialout`? |
+| Arm does not move, no errors | Is the shield's 5 V supply on? USB alone does not power the servos |
+| Arm moves but jerks or resets | Power supply too weak; use 5 V, 4 A or more |
+| Nothing for ~8 s after launch | Normal: the UNO resets and soft-starts the servos |
+| `Firmware: ERR ...` in the log | Wrong firmware on the board; reflash `braccio_uno_firmware` |
+
+## Arduino UNO Q (alternative)
+
+The older UNO Q set-up is still in the repository: the App Lab apps in
+`app_lab/` over the network (`remote.launch.py`), and
+`firmware/unoq_braccio_firmware`. See [architecture.md](architecture.md) and
+[platform-setup.md](platform-setup.md).

@@ -6,7 +6,10 @@ with native Windows used for Arduino flashing if preferred. macOS is best used
 for firmware and ROS 2 package development; Gazebo simulation should be run in a
 Linux VM or container.
 
-There are two hardware control modes:
+The main hardware set-up is an **Arduino UNO over USB serial**: flash it with
+`scripts/flash_uno.sh` (Linux/macOS) or `scripts\flash_uno.ps1` (Windows) and
+follow [hardware.md](hardware.md). The `arduino:zephyr:unoq` flashing
+commands below are for the older Arduino UNO Q set-up, which has two modes:
 
 - USB serial: the ROS 2 host is physically connected to the UNO Q USB port.
 - Remote network: an Arduino App Lab app runs on the UNO Q and exposes a TCP
