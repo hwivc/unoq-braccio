@@ -12,7 +12,10 @@ where the firmware reports the arm is. The arm's real position is polled with "S
 every status_period.
 
 Opening the port resets a classic UNO, and the firmware then soft-starts the
-servos for about 6 s. Nothing is sent until the firmware has answered (its
+servos for about 6 s. Linux does not always toggle the reset line on open
+(HUPCL off after another program used the port), so with reset_on_connect
+(default) the bridge pulses DTR itself: every connect restarts the board
+into its standing-up start pose. Nothing is sent until the firmware has answered (its
 READY banner, or a STAT reply to a probe), and the port is reopened if the
 cable is pulled. After a reset the arm is back at its start pose; the last
 command is deliberately not replayed.
@@ -54,6 +57,8 @@ class SerialBridge(Node):
         self.declare_parameter("boot_wait", 2.0)          # UNO bootloader after the port opens
         self.declare_parameter("reconnect_period", 2.0)
         self.declare_parameter("publish_joint_states", True)
+        # Restart the UNO on connect so the arm always begins standing up.
+        self.declare_parameter("reset_on_connect", True)
 
         self.port = str(self.get_parameter("serial_port").value)
         self.baud_rate = int(self.get_parameter("baud_rate").value)
@@ -118,6 +123,11 @@ class SerialBridge(Node):
             if (now - self.opened_at >= float(self.get_parameter("boot_wait").value)
                     and now - self.last_probe >= 1.0):
                 self.last_probe = now
+                # The bare newline first makes the firmware drop any half line
+                # of junk left from before (a board that did not reset may
+                # still hold, say, ModemManager's AT probing). Sent only after
+                # boot_wait, so the bootloader never sees it.
+                self.write("")
                 self.write("S")
             return
 
@@ -150,12 +160,26 @@ class SerialBridge(Node):
                 throttle_duration_sec=10.0,
             )
             return
+        reset = bool(self.get_parameter("reset_on_connect").value)
+        if reset:
+            # Opening the port normally resets an UNO, but not if Linux left
+            # DTR asserted from an earlier session (HUPCL off). Pulse it
+            # ourselves so every connect restarts the board into its start pose.
+            try:
+                port.dtr = False
+                time.sleep(0.1)
+                port.reset_input_buffer()
+                port.dtr = True
+            except (serial.SerialException, OSError) as error:
+                self.get_logger().warning(f"Could not pulse DTR to reset the board: {error}")
         with self.lock:
             self.serial = port
             self.ready = False
             self.opened_at = time.monotonic()
         self.get_logger().info(
-            f"Opened {self.port} at {self.baud_rate} baud; waiting for the arm to power up"
+            f"Opened {self.port} at {self.baud_rate} baud; "
+            + ("restarting the UNO so the arm stands up; " if reset else "")
+            + "waiting for the arm to power up (about 8 s)"
         )
 
     def close_port(self, reason: str) -> None:
@@ -230,7 +254,10 @@ class SerialBridge(Node):
             if bool(self.get_parameter("publish_joint_states").value):
                 self.publish_joint_states(status["pos"])
         elif line.startswith("ERR"):
-            self.get_logger().warning(f"Firmware: {line}")
+            if self.ready:
+                self.get_logger().warning(f"Firmware: {line}")
+            else:  # leftover junk from before we opened the port; harmless
+                self.get_logger().info(f"Firmware (ignored during start-up): {line}")
         # OK and DONE need no action.
 
     def forget_commands(self) -> None:

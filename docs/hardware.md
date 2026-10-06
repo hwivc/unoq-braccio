@@ -114,7 +114,8 @@ arrive together, and a new `M` during a move retargets smoothly.
 
 The ROS `serial_bridge`:
 
-- waits for the board to boot before sending (opening the port resets a UNO);
+- restarts the UNO when it connects (pulses the reset line), so the arm always
+  begins standing up, then waits for it to boot before sending;
 - sends only the newest command when they arrive faster than it can send;
 - keeps the last angle for any joint a command leaves out;
 - reconnects if the cable is unplugged;
@@ -146,7 +147,8 @@ gripping at `95` and go towards `110` only if needed.
 | `Cannot open /dev/...` | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio`; are you in `dialout`? |
 | Arm does not move, no errors | Is the shield's 5 V supply on? USB alone does not power the servos |
 | Arm moves but jerks or resets | Power supply too weak; use 5 V, 4 A or more |
-| Nothing for ~8 s after launch | Normal: the UNO resets and soft-starts the servos |
+| Nothing for ~8 s after launch | Normal: the UNO restarts and soft-starts the servos |
+| Arm keeps its old pose at launch instead of standing up | The board did not restart. `bash scripts/check_uno_serial.sh` tells you; a clone without the reset capacitor cannot be restarted from the PC: press RESET or power-cycle it |
 | `Firmware: ERR ...` in the log | Wrong firmware on the board; reflash `braccio_uno_firmware` |
 
 ## Arduino UNO Q (alternative)

@@ -210,10 +210,11 @@ void handleLine(const char *text) {
 void readSerial() {
   while (Serial.available() > 0) {
     char c = (char)Serial.read();
-    if (c == '\r') {
-      continue;
-    }
-    if (c == '\n') {
+    // A line ends at '\n' or '\r' (so "\r\n" works too; the empty line it
+    // leaves is skipped). Treating '\r' as an end matters: modem-probing
+    // software such as ModemManager sends "AT...\r" lines, and if '\r' were
+    // ignored that junk would stay in the buffer and spoil the next command.
+    if (c == '\n' || c == '\r') {
       if (lineTooLong) {
         Serial.println(F("ERR line_too_long"));
       } else if (lineLength > 0) {
