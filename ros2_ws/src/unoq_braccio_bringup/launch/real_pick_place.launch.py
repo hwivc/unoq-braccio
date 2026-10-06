@@ -7,9 +7,6 @@ Use the same gripper_camera, camera_config and workspace_config values as
 real.launch.py.
 """
 
-import os
-
-from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, OpaqueFunction
 from launch.substitutions import LaunchConfiguration
@@ -20,7 +17,6 @@ from unoq_braccio_bringup.real_camera import read_camera_config
 
 
 def generate_launch_description():
-    share = get_package_share_directory("unoq_braccio_bringup")
     arg = LaunchConfiguration
 
     def pick_place(context):
@@ -42,9 +38,9 @@ def generate_launch_description():
         DeclareLaunchArgument("gripper_camera", default_value="false",
                               description="Check the cube with the gripper camera before and after grasping."),
         DeclareLaunchArgument("camera_config",
-                              default_value=os.path.join(share, "config", "real_camera.yaml")),
+                              default_value="~/.ros/braccio_setup.yaml"),
         DeclareLaunchArgument("workspace_config",
-                              default_value=os.path.join(share, "config", "real_workspace.yaml")),
+                              default_value="~/.ros/braccio_setup.yaml"),
         DeclareLaunchArgument("step_wait", default_value="3.0",
                               description="Seconds to wait for each arm move to finish."),
         OpaqueFunction(function=pick_place),

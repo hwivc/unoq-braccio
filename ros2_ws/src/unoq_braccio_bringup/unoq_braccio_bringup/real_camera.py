@@ -9,6 +9,11 @@ def read_camera_config(path):
     """camera_x/y/z, cube_size (metres) and camera_fx (pixels, 0 = measure)."""
     import yaml
 
+    if not os.path.exists(os.path.expanduser(path)):
+        raise RuntimeError(
+            f"No set-up file at {path} yet. With real.launch.py running, do the "
+            "set-up: ros2 run unoq_braccio_driver real_setup"
+        )
     with open(os.path.expanduser(path), encoding="utf-8") as handle:
         config = yaml.safe_load(handle) or {}
     missing = [k for k in KEYS if k not in config]

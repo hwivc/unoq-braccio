@@ -103,34 +103,38 @@ The overhead camera can be a USB webcam (`camera:=0`) or a WiFi stream, e.g.
 a phone running the IP Webcam app (`camera:=http://<phone-ip>:8080/video`).
 
 1. Mount the camera **looking straight down**, top of the picture pointing the
-   way the arm faces. Measure it into
-   `ros2_ws/src/unoq_braccio_bringup/config/real_camera.yaml` (mm), then `colcon build`:
-
-   ```yaml
-   camera_height_mm: 600   # lens straight down to the table
-   camera_x_mm: 200        # point under the lens, forward from the base centre
-   camera_y_mm: 0          # ...and left (+) / right (-)
-   cube_size_mm: 30
-   ```
-
-2. Start the arm and camera. This already includes everything `hardware.launch.py`
-   starts, so stop that one first; never run both. Put one cube near the middle
-   of the picture until the log says the camera scale was measured:
+   way the arm faces.
+2. Start the arm and camera (this includes everything `hardware.launch.py`
+   starts; never run both):
 
    ```bash
    ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
      camera:=http://192.168.1.192:8080/video
    ```
 
-3. Sort the cubes:
+3. In a second terminal, run the step-by-step set-up:
+
+   ```bash
+   ros2 run unoq_braccio_driver real_setup
+   ```
+
+   | Step | You do |
+   |---|---|
+   | 1 Camera direction | `+` / `-` turn the arm until it points at the spot under the camera, Enter |
+   | 2 Measurements | Type distance base-to-that-spot, camera height, cube size (mm) |
+   | 3 Colours | One cube at a time under the camera: `s` saves the colour shown, `n` done |
+   | 4 Drop points | Per colour: `+` / `-` turn, `w` / `s` further / nearer, Enter saves |
+
+   It saves everything to `~/.ros/braccio_setup.yaml`. Restart step 2 afterwards.
+
+4. Sort the cubes:
 
    ```bash
    ros2 launch unoq_braccio_bringup real_pick_place.launch.py
    ```
 
-Bin positions and cube colours are in `real_workspace.yaml`. No gripper camera
-is needed (`gripper_camera:=false` is the default). Full guide:
-[docs/camera.md](docs/camera.md).
+No gripper camera is needed (`gripper_camera:=false` is the default). Full
+guide: [docs/camera.md](docs/camera.md).
 
 ## Move the arm
 
@@ -210,3 +214,17 @@ Built on ROS 2 and Gazebo (Open Robotics), Edge Impulse and Arduino. Arm
 meshes and much inspiration from Will Stedden's
 [braccio_moveit_gazebo](https://github.com/lots-of-things/braccio_moveit_gazebo)
 (GPL-3.0).
+
+## Fun: test the arm
+
+With the arm running (`hardware.launch.py`, `real.launch.py` or `sim.launch.py`),
+in a second terminal. Each one ends standing up straight; add
+`-p speed:=0.5` for slower or `-p speed:=1.5` for faster.
+
+```bash
+ros2 run unoq_braccio_driver arm_tricks --ros-args -p trick:=wave    # waves hello
+ros2 run unoq_braccio_driver arm_tricks --ros-args -p trick:=dance   # sways side to side
+ros2 run unoq_braccio_driver arm_tricks --ros-args -p trick:=nod     # nods "yes"
+ros2 run unoq_braccio_driver arm_tricks --ros-args -p trick:=shake   # shakes "no"
+ros2 run unoq_braccio_driver arm_tricks --ros-args -p trick:=bow     # bows, then snaps the gripper
+```

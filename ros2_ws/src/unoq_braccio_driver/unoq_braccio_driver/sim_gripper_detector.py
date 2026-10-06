@@ -35,7 +35,7 @@ class SimGripperDetector(Node):
         self.declare_parameter("min_area_frac", 0.005)
         self.declare_parameter("workspace_config", "")  # "" = simulated cube colours
         config = str(self.get_parameter("workspace_config").value)
-        if config:
+        if config and os.path.exists(os.path.expanduser(config)):  # missing before real_setup
             ws.load_config(os.path.expanduser(config))
         self.pending = None
         self.create_subscription(Image, "/vision/gripper/image_raw", self.on_image, 5)

@@ -17,7 +17,7 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, LogInfo, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
@@ -45,11 +45,11 @@ def generate_launch_description():
         DeclareLaunchArgument("gripper_camera_source", default_value="1",
                               description="Gripper camera: USB index, /dev/videoN, or stream URL."),
         DeclareLaunchArgument("camera_config",
-                              default_value=os.path.join(share, "config", "real_camera.yaml"),
-                              description="Measured camera height / position and cube size (mm)."),
+                              default_value="~/.ros/braccio_setup.yaml",
+                              description="Written by real_setup: camera, cube size, colours, drop points."),
         DeclareLaunchArgument("workspace_config",
-                              default_value=os.path.join(share, "config", "real_workspace.yaml"),
-                              description="Real workspace YAML: bins, gripper, cube colours."),
+                              default_value="~/.ros/braccio_setup.yaml",
+                              description="Cube colours and drop points (the same real_setup file)."),
         DeclareLaunchArgument("detector_backend", default_value="edge_impulse",
                               description="'edge_impulse' or 'color_blob'."),
         DeclareLaunchArgument("model_path", default_value=""),
@@ -80,7 +80,11 @@ def generate_launch_description():
     )
 
     def cube_detector(context):
-        camera = read_camera_config(arg("camera_config").perform(context))
+        try:
+            camera = read_camera_config(arg("camera_config").perform(context))
+        except RuntimeError as exc:
+            # First run: start arm + camera without detection so real_setup can run.
+            return [LogInfo(msg=f"{exc}. Starting without cube detection.")]
         return [Node(
             package="unoq_braccio_driver",
             executable="sim_cube_detector",

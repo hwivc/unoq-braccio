@@ -36,6 +36,8 @@ setup(
             "sim_cube_detector = unoq_braccio_driver.sim_cube_detector:main",
             "sim_gripper_detector = unoq_braccio_driver.sim_gripper_detector:main",
             "camera_node = unoq_braccio_driver.camera_node:main",
+            "real_setup = unoq_braccio_driver.real_setup:main",
+            "arm_tricks = unoq_braccio_driver.arm_tricks:main",
             "sim_grasp_attacher =unoq_braccio_driver.sim_grasp_attacher:main",
             "workspace_markers = unoq_braccio_driver.workspace_markers:main",
             "pick_place_demo = unoq_braccio_driver.pick_place_demo:main",

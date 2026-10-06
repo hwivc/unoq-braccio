@@ -37,7 +37,7 @@ class WorkspaceMarkers(Node):
         self.declare_parameter("workspace_config", "")
         self.declare_parameter("show_camera", True)
         config = str(self.get_parameter("workspace_config").value)
-        if config:
+        if config and os.path.exists(os.path.expanduser(config)):  # missing before real_setup
             ws.load_config(os.path.expanduser(config))
         self.cubes = []
         self.state = "IDLE"
