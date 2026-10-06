@@ -124,8 +124,11 @@ a phone running the IP Webcam app (`camera:=http://<phone-ip>:8080/video`).
    | 2 Measurements | Type distance base-to-that-spot, camera height, cube size (mm) |
    | 3 Colours | One cube at a time under the camera: `s` saves the colour shown, `n` done |
    | 4 Drop points | Per colour: `+` / `-` turn, `w` / `s` further / nearer, Enter saves |
+   | 5 Touch calibration | Put a cube anywhere, Enter (arm moves over it), nudge until centred, Enter. Repeat 6-8 times spread out, `d` done. Corrects camera tilt / rotation and arm errors |
 
    It saves everything to `~/.ros/braccio_setup.yaml`. Restart step 2 afterwards.
+   Redo one step later: `ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=touch`
+   (or `camera`, `colors`, `drops`).
 
 4. Sort the cubes:
 

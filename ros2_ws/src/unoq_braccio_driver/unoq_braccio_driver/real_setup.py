@@ -34,7 +34,13 @@ from sensor_msgs.msg import Image, JointState
 from unoq_braccio_driver.braccio_kinematics import solve_ik
 from unoq_braccio_driver.braccio_model import JOINT_NAMES, START_POSE
 from unoq_braccio_driver.color_vision import image_to_rgb, to_hsv
-from unoq_braccio_driver.table_projection import focal_from_cube
+from unoq_braccio_driver import braccio_workspace as ws
+from unoq_braccio_driver.table_projection import (
+    PinholeDownProjection,
+    fit_homography,
+    focal_from_cube,
+    reprojection_errors,
+)
 
 SETUP_FILE = "~/.ros/braccio_setup.yaml"
 POINT_GRIPPER = 105            # fingers closed to a point
@@ -171,6 +177,8 @@ class RealSetup(Node):
     def __init__(self):
         super().__init__("real_setup")
         self.declare_parameter("setup_file", SETUP_FILE)
+        # Which steps to run: camera, colors, drops, touch (comma separated).
+        self.declare_parameter("steps", "camera,colors,drops,touch")
         self.path = os.path.expanduser(str(self.get_parameter("setup_file").value))
         self.setup = {}
         if os.path.exists(self.path):
@@ -211,7 +219,7 @@ class RealSetup(Node):
     # -- steps --------------------------------------------------------------------
 
     def step_camera(self, term):
-        print("\n== STEP 1/4: CAMERA DIRECTION ==")
+        print("\n== STEP 1/5: CAMERA DIRECTION ==")
         print("The arm will lean out. Keep hands clear. Press Enter to start.")
         while term.key(1.0) not in ("\n", "\r"):
             pass
@@ -232,7 +240,7 @@ class RealSetup(Node):
         print(f"\nSaved camera direction: base {base:.0f} degrees")
         self.send(START_POSE)
 
-        print("\n== STEP 2/4: MEASUREMENTS (millimetres) ==")
+        print("\n== STEP 2/5: MEASUREMENTS (millimetres) ==")
         distance = term.ask("Distance from the base centre to the spot under the camera",
                             self.setup.get("camera_distance_mm", 200))
         height = term.ask("Camera height: lens straight down to the table",
@@ -254,7 +262,7 @@ class RealSetup(Node):
     def step_colors(self, term):
         import cv2  # noqa: F401  (OpenCV is needed by find_cube)
 
-        print("\n== STEP 3/4: CUBE COLOURS ==")
+        print("\n== STEP 3/5: CUBE COLOURS ==")
         print("Put ONE cube on the table right under the camera.")
         print("  s  save the colour shown     u  undo last     n  done")
         colors = []
@@ -314,7 +322,7 @@ class RealSetup(Node):
     def step_drops(self, term):
         names = list(self.setup.get("cube_hsv", {}))
         cube = self.setup["cube_size_mm"] / 1000.0
-        print("\n== STEP 4/4: DROP POINTS ==")
+        print("\n== STEP 4/5: DROP POINTS ==")
         print("For each colour, move the gripper over where those cubes should go.")
         print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer   Enter  save")
         bins = []
@@ -356,12 +364,141 @@ class RealSetup(Node):
         self.setup["pick_area"] = {"x": 0.17, "y": 0.0, "size_x": 0.46, "size_y": 0.80}
         self.save()
 
+    def touch_detector(self):
+        """The same cube finder the running detector uses (Edge Impulse model
+        if available, else the learned colours), so both measure the same point."""
+        from unoq_braccio_driver.cube_model_backend import create_cube_detector
+
+        cube = self.setup["cube_size_mm"] / 1000.0
+        height = self.setup.get("camera_height_mm", 600) / 1000.0
+        fx = float(self.setup.get("camera_fx_px", 0) or 500.0)
+        ws.apply_config({"cube_size": cube, "cube_hsv": self.setup["cube_hsv"]})
+        return create_cube_detector("edge_impulse", "", 0.3, 0.45, cube, fx, height - cube / 2)
+
+    def first_guess(self, u, v, shape):
+        """Table (x, y) of pixel (u, v) from the measured camera (steps 1-2)."""
+        s = self.setup
+        if not all(k in s for k in ("camera_x_mm", "camera_y_mm", "camera_height_mm")):
+            return 0.22, 0.0
+        fx = float(s.get("camera_fx_px", 0) or 500.0)
+        camera = PinholeDownProjection(fx, fx, shape[1] / 2.0, shape[0] / 2.0,
+                                       s["camera_x_mm"] / 1000.0, s["camera_y_mm"] / 1000.0,
+                                       s["camera_height_mm"] / 1000.0)
+        return camera.to_table(u, v, s["cube_size_mm"] / 2000.0)
+
+    def step_touch(self, term):
+        print("\n== STEP 5/5: TOUCH CALIBRATION ==")
+        print("Put ONE cube anywhere on the table, then press Enter: the arm moves over it.")
+        print("Nudge until the closed fingertips are centred right over the cube, Enter saves.")
+        print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer")
+        print("  u  undo last point     d  done (at least 4; 6-8 spread out is best)")
+        detector = self.touch_detector()
+        cube = self.setup["cube_size_mm"] / 1000.0
+        hover = cube + 0.02            # grasp point 2 cm above the cube's top
+        pixels, targets = [], []
+        aiming = None                  # (u, v, base, reach) while nudging
+        shape = None
+        last_wait = 0.0
+        while True:
+            if aiming is None:
+                frame = self.frame
+                if frame is None:
+                    if time.monotonic() - last_wait > 2.0:
+                        print("\n  waiting for camera images (is real.launch.py running?)")
+                        last_wait = time.monotonic()
+                    seen = []
+                else:
+                    shape = frame.shape
+                    seen = detector.find_cubes(frame)
+                    status = ("no cube seen" if not seen else
+                              "cube seen - Enter to move the arm over it" if len(seen) == 1 else
+                              f"{len(seen)} cubes seen - leave only ONE on the table")
+                    print(f"\r  [{len(pixels)} points] {status:<48}", end="", flush=True)
+            key = term.key()
+            if aiming is None:
+                if key in ("\n", "\r") and shape is not None and len(seen) == 1:
+                    x1, y1, x2, y2 = seen[0][:4]
+                    u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
+                    x, y = self.first_guess(u, v, shape)
+                    base = 90.0 + math.degrees(math.atan2(y, x))
+                    reach = math.hypot(x, y)
+                    if not self.point(base, reach, hover):
+                        base, reach = 90.0, 0.22
+                        self.point(base, reach, hover)
+                    aiming = (u, v, base, reach)
+                    print(f"\n  arm over the guess ({x * 100:.1f}, {y * 100:.1f}) cm - nudge it, Enter saves")
+                elif key == "u" and pixels:
+                    pixels.pop()
+                    targets.pop()
+                    print(f"\n  removed the last point ({len(pixels)} left)")
+                elif key == "d":
+                    if len(pixels) < 4:
+                        print(f"\n  need at least 4 points (have {len(pixels)})")
+                        continue
+                    break
+            else:
+                u, v, base, reach = aiming
+                turn = {"+": 1, "=": 1, "-": -1, "_": -1, "]": 5, "[": -5}.get(key, 0)
+                out = {"w": 0.005, "s": -0.005}.get(key, 0.0)
+                if turn or out:
+                    new_base, new_reach = max(0.0, min(180.0, base + turn)), reach + out
+                    if self.point(new_base, new_reach, hover):
+                        aiming = (u, v, new_base, new_reach)
+                    print(f"\r  base {aiming[2]:.0f} deg, {aiming[3] * 100:.1f} cm out   ",
+                          end="", flush=True)
+                elif key in ("\n", "\r"):
+                    angle = math.radians(base - 90.0)
+                    pixels.append((u, v))
+                    targets.append((reach * math.cos(angle), reach * math.sin(angle)))
+                    self.point(base, reach, hover + 0.06)   # lift clear of the cube
+                    aiming = None
+                    print(f"\n  saved point {len(pixels)}. Move the cube somewhere else "
+                          "(or d when done).")
+
+        h = fit_homography(pixels, targets)
+        errors = reprojection_errors(h, pixels, targets)
+        print("\nFit error per point (mm): " + ", ".join(f"{e * 1000:.1f}" for e in errors))
+        if len(pixels) >= 5:
+            # Leave-one-out: predict each point from the others; a big number
+            # here means that point was nudged wrong (u, then redo it).
+            checks = []
+            for i in range(len(pixels)):
+                rest = [j for j in range(len(pixels)) if j != i]
+                try:
+                    hi = fit_homography([pixels[j] for j in rest], [targets[j] for j in rest])
+                    checks.append(reprojection_errors(hi, [pixels[i]], [targets[i]])[0])
+                except ValueError:
+                    checks.append(float("nan"))
+            print("Check, each point from the others (mm): "
+                  + ", ".join(f"{e * 1000:.1f}" for e in checks))
+            print("Under ~5-10 mm is good; a much bigger one is a point to redo.")
+        rms = 1000.0 * math.sqrt(sum(e * e for e in errors) / len(errors))
+        self.setup.update({
+            "homography": [[float(c) for c in row] for row in h],
+            "image_width": int(shape[1]),
+            "image_height": int(shape[0]),
+            "touch_rms_mm": round(rms, 2),
+            "touch_points": [{"pixel": [round(u, 1), round(v, 1)], "arm": [round(x, 4), round(y, 4)]}
+                             for (u, v), (x, y) in zip(pixels, targets)],
+        })
+        self.save()
+        self.send(START_POSE)
+        print(f"Touch calibration saved ({len(pixels)} points). The detector uses it after a restart.")
+
     def run(self):
+        wanted = [s.strip().lower() for s in str(self.get_parameter("steps").value).split(",")]
+        steps = [(name, getattr(self, f"step_{name}"))
+                 for name in ("camera", "colors", "drops", "touch") if name in wanted]
         with Terminal() as term:
             try:
-                self.step_camera(term)
-                self.step_colors(term)
-                self.step_drops(term)
+                for name, step in steps:
+                    if name != "camera" and "cube_size_mm" not in self.setup:
+                        print("Run the camera step first (it asks for the cube size).")
+                        return
+                    if name in ("drops", "touch") and not self.setup.get("cube_hsv"):
+                        print("Run the colors step first.")
+                        return
+                    step(term)
             finally:
                 self.send(START_POSE)
         print(f"\nAll saved to {self.path}.")

@@ -50,6 +50,22 @@ ros2 run unoq_braccio_driver real_setup
 4. **Drop points.** For each colour, the arm moves out; move the gripper over
    where those cubes should go (`+` / `-` turn, `w` / `s` further / nearer)
    and press Enter. Drop points must be at least 8 cm apart.
+5. **Touch calibration** (makes picks accurate). Put one cube anywhere on the
+   table and press Enter: the arm moves over where it thinks the cube is.
+   Nudge it (`+` / `-` turn, `w` / `s` further / nearer) until the closed
+   fingertips are centred right over the cube, then Enter. Move the cube and
+   repeat: at least 4 points, 6-8 spread over where cubes and drop points will
+   be is best; `u` undoes a point, `d` when done. It prints the error per
+   point; a point much worse than the others was nudged wrong (`u`, redo).
+   Because it records where the arm really had to go, it corrects camera
+   tilt, picture rotation, the step 1-2 measurements and the arm's own
+   errors together. Without it the camera must look exactly straight down.
+
+Redo a single step later (the others are kept):
+
+```bash
+ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=touch   # or camera, colors, drops
+```
 
 Restart terminal 1 so the detector loads the set-up, then sort the cubes:
 
@@ -58,10 +74,9 @@ ros2 launch unoq_braccio_bringup real_pick_place.launch.py
 ros2 topic echo /vision/cube_target      # optional: where it sees each cube
 ```
 
-Cubes can go anywhere the arm reaches that is not a drop point. If the arm
-lands consistently beside the cubes, redo step 1 and 2 (camera direction and
-distance); if errors grow towards the picture edges, the camera is not
-looking straight down.
+Cubes can go anywhere the arm reaches that is not a drop point. If picks
+miss, redo the touch calibration (`steps:=touch`) with more points, spread
+over where the misses happen. Redo it whenever the camera or the arm moves.
 
 ## Launch options (`real.launch.py`)
 

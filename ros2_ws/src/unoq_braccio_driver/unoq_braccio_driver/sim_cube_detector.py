@@ -66,6 +66,7 @@ from unoq_braccio_driver.cube_model_backend import create_cube_detector
 from unoq_braccio_driver.table_projection import (
     PinholeDownProjection,
     focal_from_cube,
+    load_calibration,
 )
 
 # Re-exported for older imports / tests.
@@ -137,6 +138,16 @@ class SimCubeDetector(Node):
         self.use_measured = bool(self.get_parameter("use_measured_camera").value)
         self.measured_fx = float(self.get_parameter("camera_fx").value) or None
         self.fx_samples = []
+        # Touch calibration (real_setup step 5) in the same file: pixel ->
+        # where the arm really has to go. Used instead of the measured camera.
+        self.touch = None
+        if config and self.use_measured:
+            try:
+                self.touch = load_calibration(os.path.expanduser(config))
+                self.get_logger().info("Using the touch calibration")
+            except (OSError, ValueError):
+                self.get_logger().info(
+                    "No touch calibration yet (real_setup step 5); using the measured camera")
 
         self.info = None
         self.color_filter = ""
@@ -163,6 +174,11 @@ class SimCubeDetector(Node):
     def projection(self, rgb):
         """(to_table(u, v, plane_z), pixels_per_metre(plane_z)) for this frame,
         or None if the camera geometry is not known yet."""
+        if self.touch is not None:
+            size = (rgb.shape[1], rgb.shape[0])
+            touch = self.touch
+            return (lambda u, v, z: touch.to_table(u, v, frame_size=size),
+                    lambda z: touch.pixels_per_metre(frame_size=size))
         if self.use_measured:
             if self.measured_fx is None:
                 return None
@@ -226,7 +242,7 @@ class SimCubeDetector(Node):
         if rgb is None:
             self.get_logger().warning(f"Unsupported image encoding {msg.encoding}")
             return
-        if self.use_measured and self.measured_fx is None:
+        if self.use_measured and self.measured_fx is None and self.touch is None:
             self.learn_fx(rgb)
             return
         projection = self.projection(rgb)
