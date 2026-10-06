@@ -112,7 +112,9 @@ def main(argv=None):
         return 1
     if ok:
         print(f"Done: {final_path}")
-        print("Needs the TFLite runtime once:  pip install --break-system-packages ai-edge-litert")
+        print("Needs the TFLite runtime once:  "
+              "pip install --break-system-packages ai-edge-litert 'numpy<2'")
+        print("(numpy<2 matters: Ubuntu's OpenCV breaks with NumPy 2.)")
         print("Then restart the launch; it logs 'Cube detector: Edge Impulse model ...'.")
     return 0 if ok else 1
 

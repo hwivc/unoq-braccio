@@ -222,7 +222,8 @@ def create_cube_detector(
                 return detector
             except Exception as exc:  # missing runtime, corrupt file, wrong shape, ...
                 hint = (" Install the runtime once: pip install --break-system-packages "
-                        "ai-edge-litert." if isinstance(exc, ImportError) else "")
+                        "ai-edge-litert 'numpy<2' (NumPy 2 breaks Ubuntu's OpenCV)."
+                        if isinstance(exc, ImportError) else "")
                 log(
                     f"Could not load Edge Impulse model '{resolved}': {exc}.{hint} "
                     "Falling back to colour-blob detection.",

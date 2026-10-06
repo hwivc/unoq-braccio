@@ -166,7 +166,7 @@ detection and logs a warning.
 
 ```bash
 ros2 run unoq_braccio_driver download_model                  # saves it to ~/unoq-braccio/ (resumable, Ctrl+C safe)
-pip install --break-system-packages ai-edge-litert           # TensorFlow Lite runtime, once
+pip install --break-system-packages ai-edge-litert 'numpy<2' # TFLite runtime, once; numpy<2 keeps Ubuntu's OpenCV working
 ```
 
 Restart the launch afterwards; it should log `Cube detector: Edge Impulse model '...'`.
