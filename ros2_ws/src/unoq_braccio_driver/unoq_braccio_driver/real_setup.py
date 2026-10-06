@@ -48,6 +48,7 @@ POINT_REACH = 0.22             # how far out the arm points while aiming (m)
 POINT_HEIGHT = 0.12            # fingertip height while aiming (m)
 DROP_HOVER = 0.08              # fingertip height while choosing a drop point (m)
 DROP_SIZE = 0.06               # a cube counts as "in" a drop point within this square (m)
+MIN_GRASP_Z = 0.015            # joint keys never take the grasp point lower (fingers clear the table)
 
 # Cube pixels: saturated enough not to be white paper, grey table or shadow.
 MIN_SATURATION = 60
@@ -191,6 +192,7 @@ class Jog:
     def __init__(self, send, height, gripper):
         self.send, self.height, self.gripper = send, height, gripper
         self.joints = None   # shoulder, elbow, wrist_vertical (floats)
+        self.servos = None   # all six servos last sent
 
     def move(self, base, reach):
         from unoq_braccio_driver.braccio_kinematics import forward_kinematics, planar_ik
@@ -215,8 +217,57 @@ class Jog:
                     miss = math.dist(forward_kinematics(servos), target)
                     if best is None or miss < best[0]:
                         best = (miss, servos)
-        self.send(best[1] + [self.gripper])
+        self.servos = best[1] + [self.gripper]
+        self.send(self.servos)
         return True
+
+    def nudge_joint(self, index, delta):
+        """Move one joint (servo index in JOINT_NAMES) by ``delta`` degrees.
+        Returns False (and does not move) if that would put the fingertips
+        into the table."""
+        from unoq_braccio_driver.braccio_kinematics import forward_kinematics
+        from unoq_braccio_driver.braccio_model import JOINT_LIMITS
+
+        limit = JOINT_LIMITS[JOINT_NAMES[index]]
+        servos = list(self.servos)
+        servos[index] = max(limit.minimum, min(limit.maximum, servos[index] + delta))
+        # forward_kinematics gives the grasp point; the fingers reach 13 mm
+        # further, so keep the grasp point at least 1.5 cm above the table.
+        if forward_kinematics(servos[:5])[2] < MIN_GRASP_Z:
+            return False
+        self.servos = servos
+        self.joints = [float(v) for v in servos[1:4]]
+        self.send(servos)
+        return True
+
+    def tip(self):
+        """Where the fingertip is for the servos last sent: (x, y, z) metres."""
+        from unoq_braccio_driver.braccio_kinematics import forward_kinematics
+
+        return forward_kinematics(self.servos[:5])
+
+    def base_reach(self):
+        """(base degrees, reach metres) of the current fingertip."""
+        x, y, _ = self.tip()
+        return float(self.servos[0]), math.hypot(x, y)
+
+
+# One joint at a time, 1 degree per press: upper key = forward / down.
+JOINT_KEYS = {
+    "j": (0, +1), "l": (0, -1),   # base: turn left / right
+    "i": (1, +1), "k": (1, -1),   # shoulder: lean forward / back
+    "y": (2, +1), "h": (2, -1),   # elbow: fold forward / back
+    "t": (3, +1), "g": (3, -1),   # wrist: tip down / up
+}
+JOINT_HELP = ("  single joints, 1 degree:  j / l base   i / k shoulder   "
+              "y / h elbow   t / g wrist")
+
+
+def joint_status(jog):
+    s = jog.servos
+    x, y, z = jog.tip()
+    return (f"base {s[0]:.0f} shoulder {s[1]:.0f} elbow {s[2]:.0f} wrist {s[3]:.0f}  "
+            f"| tip x {x * 100:.1f} y {y * 100:.1f} z {z * 100:.1f} cm")
 
 
 # -- the set-up node -------------------------------------------------------------
@@ -374,6 +425,7 @@ class RealSetup(Node):
         print("For each colour, move the gripper over where those cubes should go.")
         print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer 5 mm   "
               "W / S  2 mm   Enter  save")
+        print(JOINT_HELP)
         bins = []
         for i, name in enumerate(names):
             base, reach = 90.0 + 30.0 + 20.0 * i, 0.25   # start on the arm's left
@@ -393,10 +445,15 @@ class RealSetup(Node):
                     if (solve_ik(x, y, cube / 2 + 0.02, 95) is not None
                             and jog.move(new_base, new_reach)):
                         base, reach = new_base, new_reach
-                    print(f"\r  base {base:.0f} deg, {reach * 100:.1f} cm out   ", end="", flush=True)
+                    print(f"\r  {joint_status(jog)}   ", end="", flush=True)
+                elif key in JOINT_KEYS:
+                    if not jog.nudge_joint(*JOINT_KEYS[key]):
+                        print("\r  that would put the gripper into the table - not moved", end="", flush=True)
+                        continue
+                    base, reach = jog.base_reach()
+                    print(f"\r  {joint_status(jog)}   ", end="", flush=True)
                 elif key in ("\n", "\r"):
-                    angle = math.radians(base - 90.0)
-                    x, y = reach * math.cos(angle), reach * math.sin(angle)
+                    x, y, _ = jog.tip()
                     # Drop points must not overlap, or a cube on one would be
                     # read as being on the other.
                     near = [b["cube_color"] for b in bins
@@ -441,6 +498,7 @@ class RealSetup(Node):
         print("Put ONE cube anywhere on the table, then press Enter: the arm moves over it.")
         print("Nudge until the closed fingertips are centred right over the cube, Enter saves.")
         print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer 5 mm   W / S  2 mm")
+        print(JOINT_HELP)
         print("  u  undo last point     d  done (at least 4; 6-8 spread out is best)")
         detector = self.touch_detector()
         cube = self.setup["cube_size_mm"] / 1000.0
@@ -495,12 +553,19 @@ class RealSetup(Node):
                     new_base, new_reach = max(0.0, min(180.0, base + turn)), reach + out
                     if jog.move(new_base, new_reach):
                         aiming = (u, v, new_base, new_reach)
-                    print(f"\r  base {aiming[2]:.0f} deg, {aiming[3] * 100:.1f} cm out   ",
-                          end="", flush=True)
+                    print(f"\r  {joint_status(jog)}   ", end="", flush=True)
+                elif key in JOINT_KEYS:
+                    if not jog.nudge_joint(*JOINT_KEYS[key]):
+                        print("\r  that would put the gripper into the table - not moved", end="", flush=True)
+                        continue
+                    aiming = (u, v, *jog.base_reach())
+                    print(f"\r  {joint_status(jog)}   ", end="", flush=True)
                 elif key in ("\n", "\r"):
-                    angle = math.radians(base - 90.0)
+                    # Where the fingertip really is for the servos sent, so
+                    # joint-key and +/-/w/s nudging are recorded the same way.
+                    x, y, _ = jog.tip()
                     pixels.append((u, v))
-                    targets.append((reach * math.cos(angle), reach * math.sin(angle)))
+                    targets.append((x, y))
                     self.point(base, reach, hover + 0.06)   # lift clear of the cube
                     aiming = None
                     print(f"\n  saved point {len(pixels)}. Move the cube somewhere else "

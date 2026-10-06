@@ -53,7 +53,8 @@ ros2 run unoq_braccio_driver real_setup
 5. **Touch calibration** (makes picks accurate). Put one cube anywhere on the
    table and press Enter: the arm moves over where it thinks the cube is.
    Nudge it (`+` / `-` turn, `w` / `s` further / nearer by 5 mm, `W` / `S`
-   by 2 mm for the last bit) until the closed
+   by 2 mm for the last bit, or single joints: `j`/`l` base, `i`/`k`
+   shoulder, `y`/`h` elbow, `t`/`g` wrist, 1 degree per press) until the closed
    fingertips are centred right over the cube, then Enter. Move the cube and
    repeat: at least 4 points, 6-8 spread over where cubes and drop points will
    be is best; `u` undoes a point, `d` when done. It prints the error per
