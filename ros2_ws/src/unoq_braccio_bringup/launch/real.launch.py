@@ -8,20 +8,23 @@
 stream URL (Android "IP Webcam": http://<phone-ip>:8080/video).
 
 Starts: the serial bridge to the UNO (always USB), the overhead camera, the
-cube detector using the table calibration, and RViz. Then run the task with
-real_pick_place.launch.py. Calibrate the camera once first: docs/camera.md.
+cube detector, and RViz. The camera's measured height and position, and the
+cube size, come from config/real_camera.yaml (docs/camera.md). Then run the
+task with real_pick_place.launch.py.
 """
 
 import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch_ros.parameter_descriptions import ParameterValue
+
+from unoq_braccio_bringup.real_camera import read_camera_config
 
 
 def generate_launch_description():
@@ -41,12 +44,12 @@ def generate_launch_description():
                               description="Use a camera on the gripper for pick checks."),
         DeclareLaunchArgument("gripper_camera_source", default_value="1",
                               description="Gripper camera: USB index, /dev/videoN, or stream URL."),
+        DeclareLaunchArgument("camera_config",
+                              default_value=os.path.join(share, "config", "real_camera.yaml"),
+                              description="Measured camera height / position and cube size (mm)."),
         DeclareLaunchArgument("workspace_config",
                               default_value=os.path.join(share, "config", "real_workspace.yaml"),
-                              description="Real workspace YAML: cube size, bins, gripper, calibration points."),
-        DeclareLaunchArgument("calibration_file",
-                              default_value="~/.ros/braccio_table_calibration.yaml",
-                              description="Camera -> table calibration written by table_calibration."),
+                              description="Real workspace YAML: bins, gripper, cube colours."),
         DeclareLaunchArgument("detector_backend", default_value="edge_impulse",
                               description="'edge_impulse' or 'color_blob'."),
         DeclareLaunchArgument("model_path", default_value=""),
@@ -76,20 +79,23 @@ def generate_launch_description():
         output="screen",
     )
 
-    cube_detector = Node(
-        package="unoq_braccio_driver",
-        executable="sim_cube_detector",
-        name="cube_detector",
-        parameters=[{
-            "calibration_file": arg("calibration_file"),
-            "workspace_config": arg("workspace_config"),
-            "detect_bins": False,
-            "detector_backend": arg("detector_backend"),
-            "model_path": arg("model_path"),
-            "model_conf": ParameterValue(arg("model_conf"), value_type=float),
-        }],
-        output="screen",
-    )
+    def cube_detector(context):
+        camera = read_camera_config(arg("camera_config").perform(context))
+        return [Node(
+            package="unoq_braccio_driver",
+            executable="sim_cube_detector",
+            name="cube_detector",
+            parameters=[{
+                "use_measured_camera": True,
+                **camera,
+                "workspace_config": arg("workspace_config"),
+                "detect_bins": False,
+                "detector_backend": arg("detector_backend"),
+                "model_path": arg("model_path"),
+                "model_conf": ParameterValue(arg("model_conf"), value_type=float),
+            }],
+            output="screen",
+        )]
 
     gripper_on = IfCondition(arg("gripper_camera"))
     gripper_camera = Node(
@@ -124,5 +130,6 @@ def generate_launch_description():
     )
 
     return LaunchDescription(
-        args + [hardware, overhead_camera, cube_detector, gripper_camera, gripper_detector, markers]
+        args + [hardware, overhead_camera, OpaqueFunction(function=cube_detector),
+                gripper_camera, gripper_detector, markers]
     )

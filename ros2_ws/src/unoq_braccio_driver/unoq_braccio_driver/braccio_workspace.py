@@ -160,29 +160,17 @@ def table_to_pixel(x, y, z, fx, fy, cx, cy, cam_x, cam_y, cam_z):
 # a YAML file (unoq_braccio_bringup/config/real_workspace.yaml). Every ROS node
 # is its own process, so this only changes the node that calls it.
 
-# Where to put a cube while calibrating the overhead camera (table_calibration).
-CALIBRATION_POINTS = ((0.15, -0.15), (0.30, -0.15), (0.30, 0.10), (0.15, 0.10), (0.22, -0.02))
-
-
-def _pair(value, what):
-    try:
-        x, y = (float(v) for v in value)
-    except (TypeError, ValueError):
-        raise ValueError(f"{what} must be [x, y] in metres, got {value!r}") from None
-    return x, y
-
-
 def apply_config(config: dict) -> None:
     """Replace the workspace constants with values from a config dict.
 
     Keys (all optional): ``cube_size``, ``hover_z``, ``gripper_open``,
     ``gripper_closed``, ``pick_area`` {x, y, size_x, size_y}, ``bins`` (list of
     {name, cube_color, x, y, size?, height?}), ``cube_hsv``
-    {colour: [[low_hsv, high_hsv], ...]} and ``calibration_points`` [[x, y], ...].
+    {colour: [[low_hsv, high_hsv], ...]}.
     Raises ValueError with a readable message on a malformed entry.
     """
     global CUBE_SIZE, CUBE_CENTRE_Z, HOVER_Z, GRIPPER_OPEN, GRIPPER_CLOSED
-    global PICK_SECTOR, BINS, BIN_BY_CUBE_COLOR, BIN_BY_NAME, CUBE_HSV, CALIBRATION_POINTS
+    global PICK_SECTOR, BINS, BIN_BY_CUBE_COLOR, BIN_BY_NAME, CUBE_HSV
 
     config = config or {}
     if "cube_size" in config:
@@ -232,12 +220,6 @@ def apply_config(config: dict) -> None:
                     f"cube_hsv.{color} must be a list of [[h, s, v], [h, s, v]] ranges"
                 ) from None
         CUBE_HSV = hsv
-    if "calibration_points" in config:
-        CALIBRATION_POINTS = tuple(
-            _pair(p, "calibration_points entry") for p in config["calibration_points"]
-        )
-        if len(CALIBRATION_POINTS) < 4:
-            raise ValueError("calibration_points needs at least 4 points")
 
 
 def load_config(path: str) -> dict:

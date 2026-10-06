@@ -102,31 +102,35 @@ up its servos. Wiring, serial protocol and troubleshooting:
 The overhead camera can be a USB webcam (`camera:=0`) or a WiFi stream, e.g.
 a phone running the IP Webcam app (`camera:=http://<phone-ip>:8080/video`).
 
-1. Measure your table into `ros2_ws/src/unoq_braccio_bringup/config/real_workspace.yaml`
-   (cube size, bin positions, calibration marks), then `colcon build`.
-2. Start the arm and camera:
+1. Mount the camera **looking straight down**, top of the picture pointing the
+   way the arm faces. Measure it into
+   `ros2_ws/src/unoq_braccio_bringup/config/real_camera.yaml` (mm), then `colcon build`:
+
+   ```yaml
+   camera_height_mm: 600   # lens straight down to the table
+   camera_x_mm: 200        # point under the lens, forward from the base centre
+   camera_y_mm: 0          # ...and left (+) / right (-)
+   cube_size_mm: 30
+   ```
+
+2. Start the arm and camera. This already includes everything `hardware.launch.py`
+   starts, so stop that one first; never run both. Put one cube near the middle
+   of the picture until the log says the camera scale was measured:
 
    ```bash
    ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
      camera:=http://192.168.1.192:8080/video
    ```
 
-3. Calibrate the camera once (put a cube on each mark when asked), then restart step 2:
-
-   ```bash
-   ros2 run unoq_braccio_driver table_calibration
-   ```
-
-4. Sort the cubes:
+3. Sort the cubes:
 
    ```bash
    ros2 launch unoq_braccio_bringup real_pick_place.launch.py
    ```
 
-No gripper camera is needed (`gripper_camera:=false` is the default; set it
-`true` with `gripper_camera_source:=1` on both launches if you add one). You do
-not measure the camera's height or angle; the calibration works that out.
-Full guide: [docs/camera.md](docs/camera.md).
+Bin positions and cube colours are in `real_workspace.yaml`. No gripper camera
+is needed (`gripper_camera:=false` is the default). Full guide:
+[docs/camera.md](docs/camera.md).
 
 ## Move the arm
 

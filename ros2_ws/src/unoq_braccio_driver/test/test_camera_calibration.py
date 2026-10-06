@@ -97,10 +97,8 @@ def test_simulation_mapping_unchanged():
 
 def test_real_workspace_config_loads_and_is_reachable():
     try:
-        config = ws.load_config(REAL_CONFIG)
-        assert len(ws.CALIBRATION_POINTS) >= 4
+        ws.load_config(REAL_CONFIG)
         assert set(ws.BIN_BY_CUBE_COLOR) <= set(ws.CUBE_HSV), "a bin for a colour with no HSV range"
-        assert ws.CUBE_CENTRE_Z == config["cube_size"] / 2
         pick = ws.PICK_SECTOR
         targets = [(pick.x + a * pick.size_x / 2, pick.y + b * pick.size_y / 2)
                    for a in (-1, 0, 1) for b in (-1, 0, 1)]
@@ -126,8 +124,7 @@ def test_simulation_layout_untouched_by_real_config():
 
 def test_bad_config_entries_give_readable_errors():
     for bad in ({"bins": [{"name": "x", "x": 0.1}]},
-                {"pick_area": {"x": 0.2}},
-                {"calibration_points": [[0.1, 0.1], [0.2, 0.2]]}):
+                {"pick_area": {"x": 0.2}}):
         try:
             ws.apply_config(bad)
         except ValueError:
@@ -135,6 +132,53 @@ def test_bad_config_entries_give_readable_errors():
         finally:
             importlib.reload(ws)
         raise AssertionError(f"accepted {bad}")
+
+
+def test_focal_length_measured_from_a_cube():
+    from unoq_braccio_driver.table_projection import focal_from_cube
+
+    # the simulated camera: a cube right below it, seen straight down
+    cam_z, cube = ws.CAMERA_XYZ[2], ws.CUBE_SIZE
+    side_px = ws.CAMERA_FX * cube / (cam_z - cube)
+    assert abs(focal_from_cube(side_px, cam_z, cube) - ws.CAMERA_FX) < 1e-9
+    # a 1-pixel error in a ~30 px cube changes positions by only ~3 %
+    off = focal_from_cube(side_px + 1, cam_z, cube) / ws.CAMERA_FX - 1
+    assert 0 < off < 0.04
+
+
+def test_measured_camera_maps_like_the_simulation():
+    """With the simulated camera's real numbers, the measured-camera path
+    (pinhole from height/position, image centre as principal point) gives
+    the same table positions as the simulation's own camera."""
+    fx = ws.CAMERA_FX
+    cx, cy = ws.CAMERA_WIDTH / 2.0, ws.CAMERA_HEIGHT / 2.0
+    measured = PinholeDownProjection(fx, fx, cx, cy, *ws.CAMERA_XYZ)
+    for x, y in [(0.20, -0.15), (0.30, 0.05), (0.15, 0.10)]:
+        u, v = ws.table_to_pixel(x, y, ws.CUBE_CENTRE_Z, fx, fx, cx, cy, *ws.CAMERA_XYZ)
+        assert math.dist(measured.to_table(u, v, ws.CUBE_CENTRE_Z), (x, y)) < 1e-9
+
+
+def test_real_camera_file_reads_in_metres():
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "..", "unoq_braccio_bringup"))
+    from unoq_braccio_bringup.real_camera import read_camera_config
+
+    camera_file = os.path.join(
+        os.path.dirname(__file__), "..", "..", "unoq_braccio_bringup", "config", "real_camera.yaml"
+    )
+    camera = read_camera_config(camera_file)
+    assert camera["camera_z"] == 0.6 and camera["camera_x"] == 0.2 and camera["camera_y"] == 0.0
+    assert camera["cube_size"] == 0.03 and camera["camera_fx"] == 0.0
+    import tempfile
+
+    broken = os.path.join(tempfile.mkdtemp(), "camera.yaml")
+    with open(broken, "w") as handle:
+        handle.write("camera_height_mm: 500\n")
+    try:
+        read_camera_config(broken)
+    except RuntimeError as exc:
+        assert "camera_x_mm" in str(exc)
+    else:
+        raise AssertionError("accepted a file with missing numbers")
 
 
 if __name__ == "__main__":

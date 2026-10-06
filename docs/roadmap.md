@@ -127,9 +127,9 @@ In order of value. The first one makes the rest easier.
 
 ### Real-arm follow-ups
 
-- Camera calibration is done: a table homography from 4-5 marked points
-  (`table_calibration`, [camera.md](camera.md)). A later option is
-  calibrating by touching the arm tip to points instead of marking them (the
-  `calibrate()` approach in `learn_from/braccio_moveit_gazebo`).
+- Camera: measured height / position in `real_camera.yaml`, zoom measured from
+  a cube ([camera.md](camera.md)). If a tilted camera turns out to be needed,
+  `table_projection.HomographyProjection` (fit from 4+ known table points) is
+  already written and tested.
 - **Per-joint servo offsets** in a YAML file, and `GRIPPER_CLOSED` tuned for
   real cubes (there is no grasp assist on hardware).

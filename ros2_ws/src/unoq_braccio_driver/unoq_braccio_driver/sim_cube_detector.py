@@ -30,10 +30,12 @@ Swapping in a different model only ever means changing the ``detector_backend``
 
 Simulation needs no set-up: with the default parameters pixels are mapped to
 the table with the simulated camera's known pose and focal length. On the
-real arm, ``calibration_file`` points at the file ``table_calibration``
-writes (pixel -> table homography, see docs/camera.md) and
-``workspace_config`` at the real workspace YAML; ``detect_bins:=false`` uses
-the bin positions from that file instead of looking for bin colours.
+real arm (real.launch.py), ``use_measured_camera`` uses the camera height and
+position measured into real_camera.yaml instead (camera looking straight
+down; its focal length is measured from the cubes' known size),
+``workspace_config`` points at the real workspace YAML, and
+``detect_bins:=false`` uses the bin positions from it instead of looking for
+bin colours.
 
 ``/vision/detect_request`` narrows which colours are *published* - it does not
 gate detection any more, since detection never stops. A publish there just
@@ -61,7 +63,10 @@ from unoq_braccio_driver.color_vision import (
     to_hsv,
 )
 from unoq_braccio_driver.cube_model_backend import create_cube_detector
-from unoq_braccio_driver.table_projection import PinholeDownProjection, load_calibration
+from unoq_braccio_driver.table_projection import (
+    PinholeDownProjection,
+    focal_from_cube,
+)
 
 # Re-exported for older imports / tests.
 pixel_to_table = ws.pixel_to_table
@@ -111,26 +116,27 @@ class SimCubeDetector(Node):
         self.declare_parameter("color_min_frac", 0.15)
         self.declare_parameter("publish_annotated", True)
         # Real arm only; the defaults are the simulation.
-        self.declare_parameter("calibration_file", "")   # "" = simulated camera pose
         self.declare_parameter("workspace_config", "")   # "" = simulated layout
         self.declare_parameter("detect_bins", True)      # False = bins from workspace_config
+        # Real camera from measurements (real_camera.yaml via real.launch.py):
+        # camera_x/y/z above are then the measured lens position, the camera
+        # looks straight down with the top of the image facing the way the arm
+        # faces, and its focal length is measured from the cubes' known size
+        # unless camera_fx is given.
+        self.declare_parameter("use_measured_camera", False)
+        self.declare_parameter("camera_fx", 0.0)         # pixels; 0 = measure from cubes
+        self.declare_parameter("cube_size", 0.0)         # metres; 0 = from workspace_config
 
         config = str(self.get_parameter("workspace_config").value)
         if config:
             ws.load_config(os.path.expanduser(config))
             self.get_logger().info(f"Workspace from {config}")
-        self.calibration = None
-        calibration = str(self.get_parameter("calibration_file").value)
-        if calibration:
-            try:
-                self.calibration = load_calibration(os.path.expanduser(calibration))
-                self.get_logger().info(f"Camera calibration from {calibration}")
-            except (OSError, ValueError) as exc:
-                self.get_logger().error(
-                    f"No usable camera calibration ({exc}). Run table_calibration "
-                    "first; no cube positions will be published until then."
-                )
-        self.use_calibration = bool(calibration)
+        cube_size = float(self.get_parameter("cube_size").value)
+        if cube_size > 0:
+            ws.apply_config({"cube_size": cube_size})
+        self.use_measured = bool(self.get_parameter("use_measured_camera").value)
+        self.measured_fx = float(self.get_parameter("camera_fx").value) or None
+        self.fx_samples = []
 
         self.info = None
         self.color_filter = ""
@@ -157,13 +163,16 @@ class SimCubeDetector(Node):
     def projection(self, rgb):
         """(to_table(u, v, plane_z), pixels_per_metre(plane_z)) for this frame,
         or None if the camera geometry is not known yet."""
-        if self.use_calibration:
-            if self.calibration is None:
+        if self.use_measured:
+            if self.measured_fx is None:
                 return None
-            size = (rgb.shape[1], rgb.shape[0])
-            cal = self.calibration
-            return (lambda u, v, z: cal.to_table(u, v, frame_size=size),
-                    lambda z: cal.pixels_per_metre(frame_size=size))
+            pinhole = PinholeDownProjection(
+                self.measured_fx, self.measured_fx, rgb.shape[1] / 2.0, rgb.shape[0] / 2.0,
+                float(self.get_parameter("camera_x").value),
+                float(self.get_parameter("camera_y").value),
+                float(self.get_parameter("camera_z").value),
+            )
+            return pinhole.to_table, pinhole.pixels_per_metre
         if self.info is None:
             return None
         pinhole = PinholeDownProjection(
@@ -174,12 +183,51 @@ class SimCubeDetector(Node):
         )
         return pinhole.to_table, pinhole.pixels_per_metre
 
+    def learn_fx(self, rgb) -> None:
+        """Measure the real camera's focal length from cubes near the middle
+        of the picture (where it looks straight down at their top face)."""
+        import cv2
+        import numpy as np
+
+        hsv = to_hsv(rgb)
+        rows, cols = rgb.shape[:2]
+        cam_z = float(self.get_parameter("camera_z").value)
+        for ranges in ws.CUBE_HSV.values():
+            mask = None
+            for low, high in ranges:
+                part = cv2.inRange(hsv, np.array(low), np.array(high))
+                mask = part if mask is None else cv2.bitwise_or(mask, part)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            for contour in contours:
+                area = cv2.contourArea(contour)
+                x, y, w, h = cv2.boundingRect(contour)
+                centre_u, centre_v = x + w / 2.0, y + h / 2.0
+                if (area < 0.0003 * rows * cols
+                        or abs(centre_u - cols / 2.0) > cols / 4.0
+                        or abs(centre_v - rows / 2.0) > rows / 4.0):
+                    continue
+                self.fx_samples.append(focal_from_cube(math.sqrt(area), cam_z, ws.CUBE_SIZE))
+        if len(self.fx_samples) >= 10:
+            self.measured_fx = sorted(self.fx_samples)[len(self.fx_samples) // 2]
+            self.get_logger().info(
+                f"Camera scale measured from the cubes: {self.measured_fx:.0f} px "
+                "(put it in real_camera.yaml as camera_fx_px to skip this next time)"
+            )
+        else:
+            self.get_logger().info(
+                "Measuring the camera scale: put a cube near the middle of the picture",
+                throttle_duration_sec=5.0,
+            )
+
     def on_image(self, msg: Image) -> None:
-        if not self.use_calibration and self.info is None:
+        if not self.use_measured and self.info is None:
             return
         rgb = image_to_rgb(msg)
         if rgb is None:
             self.get_logger().warning(f"Unsupported image encoding {msg.encoding}")
+            return
+        if self.use_measured and self.measured_fx is None:
+            self.learn_fx(rgb)
             return
         projection = self.projection(rgb)
         if projection is None:

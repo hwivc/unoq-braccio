@@ -70,11 +70,15 @@ class PickPlaceDemo(Node):
         self.declare_parameter("grasp_settle", 0.3)   # let the sim weld the cube before lifting
         self.declare_parameter("use_gripper_camera", True)
         self.declare_parameter("workspace_config", "")  # "" = simulated layout
+        self.declare_parameter("cube_size", 0.0)        # metres; 0 = from workspace_config
 
         config = str(self.get_parameter("workspace_config").value)
         if config:
             ws.load_config(os.path.expanduser(config))
             self.get_logger().info(f"Workspace from {config}")
+        cube_size = float(self.get_parameter("cube_size").value)
+        if cube_size > 0:
+            ws.apply_config({"cube_size": cube_size})
 
         self.command = self.create_publisher(JointState, "/braccio/joint_command", 10)
         self.request = self.create_publisher(String, "/vision/detect_request", 10)

@@ -12,8 +12,7 @@
 # After editing, rebuild (colcon build) or pass the file directly:
 #   ros2 launch unoq_braccio_bringup real.launch.py workspace_config:=/path/to/this.yaml
 
-# Edge length of your cubes.
-cube_size: 0.03
+# Cube size and the camera are set in real_camera.yaml (millimetres).
 
 # Fingertip height while carrying a cube between places.
 hover_z: 0.14
@@ -33,16 +32,6 @@ bins:
   - {name: red_bin,    cube_color: red,    x: 0.2255, y: 0.082, size: 0.08, height: 0.02}
   - {name: blue_bin,   cube_color: blue,   x: 0.154,  y: 0.184, size: 0.08, height: 0.02}
   - {name: yellow_bin, cube_color: yellow, x: 0.0417, y: 0.236, size: 0.08, height: 0.02}
-
-# Camera calibration marks (table_calibration). Mark these points on the
-# table, then the tool asks you to put a cube on each one in turn. Spread
-# them over the area the camera must measure; at least 4, not in a line.
-calibration_points:
-  - [0.15, -0.15]
-  - [0.30, -0.15]
-  - [0.30,  0.10]
-  - [0.15,  0.10]
-  - [0.22, -0.02]
 
 # Cube colours as OpenCV HSV ranges (H 0-179, S and V 0-255): [[low], [high]].
 # Real lighting differs from the simulation; if a cube is not boxed, or the

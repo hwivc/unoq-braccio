@@ -1,0 +1,19 @@
+# Real overhead camera. Measure with a tape measure, in millimetres.
+#
+#   - The camera must look STRAIGHT DOWN (phone held level).
+#   - The TOP of the camera picture must point the way the arm faces
+#     (away from the arm).
+#
+# x / y are measured from the centre of the arm's base to the point on the
+# table right below the lens: x straight ahead (the way the arm faces),
+# y to the arm's left (negative = to its right).
+
+camera_height_mm: 600   # lens straight down to the table
+camera_x_mm: 200        # forward from the base centre
+camera_y_mm: 0          # left (+) / right (-) of the base centre
+cube_size_mm: 30        # edge length of your cubes
+
+# Optional: the camera's focal length in pixels. Leave it out and it is
+# measured from a cube near the middle of the picture at start-up (the
+# detector then logs the value, which you can paste here).
+# camera_fx_px: 520

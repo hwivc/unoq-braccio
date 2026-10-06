@@ -2,16 +2,18 @@
 
 Two ways to know where a pixel is on the table:
 
-* ``PinholeDownProjection`` - simulation. The camera looks straight down from
-  a known position with a known focal length, so the mapping is exact.
+* ``PinholeDownProjection`` - the camera looks straight down from a known
+  position. Used in simulation (exact pose and focal length) and on the real
+  arm (height and position measured into real_camera.yaml; focal length
+  measured from the cubes' known size with ``focal_from_cube``).
 
-* ``HomographyProjection`` - real camera. Nobody mounts a phone exactly level
+* ``HomographyProjection`` - not used by the launch files; kept for a later
+  set-up where the camera cannot look straight down. Nobody mounts a phone exactly level
   at an exactly known spot, and its focal length is unknown, so instead of
   measuring the camera we measure the *table*: put a cube on 4+ marked points
   whose (x, y) from the arm base is known, note where each appears in the
   image, and fit a homography (a 3x3 matrix that maps any pixel to a table
-  point on that plane, for any camera angle). ``table_calibration`` does this
-  and saves the result; see docs/camera.md.
+  point on that plane, for any camera angle).
 
   The homography is fitted to cube *centres*, so it maps onto the plane at
   cube mid-height - exactly what the detector needs.
@@ -80,6 +82,17 @@ def reprojection_errors(h, pixels, table):
     ]
 
 
+def focal_from_cube(side_px, camera_height, cube_size):
+    """Camera focal length in pixels, from a cube seen right below the camera.
+
+    Its top face (``cube_size`` wide) is ``camera_height - cube_size`` from
+    the lens and appears ``side_px`` wide, so by similar triangles
+    f = side_px * distance / cube_size. Used for the real camera, whose zoom
+    is unknown: the cube's known size measures it.
+    """
+    return side_px * (camera_height - cube_size) / cube_size
+
+
 class PinholeDownProjection:
     """Simulation camera: straight down from (cam_x, cam_y, cam_z)."""
 
@@ -146,7 +159,7 @@ class HomographyProjection:
 
 
 def load_calibration(path):
-    """Read a calibration file written by ``table_calibration``.
+    """Read a calibration file written by ``save_calibration``.
 
     Returns a ``HomographyProjection``. Raises OSError / ValueError if the
     file is missing or malformed.
@@ -185,7 +198,7 @@ def save_calibration(path, h, image_size, pixels, table, errors_m):
     os.makedirs(folder, exist_ok=True)
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(
-            "# Overhead camera -> table calibration, written by table_calibration.\n"
+            "# Overhead camera -> table calibration, written by save_calibration.\n"
             "# Redo it whenever the camera moves or its zoom changes.\n"
         )
         yaml.safe_dump(data, handle, sort_keys=False)
