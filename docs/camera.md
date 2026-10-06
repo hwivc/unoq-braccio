@@ -164,6 +164,7 @@ Use the same `gripper_camera` value for `real_pick_place.launch.py`.
 
 | Problem | Check |
 |---|---|
+| `Connection to tcp://... failed: No route to host` | The PC cannot reach the phone at all: `ping <phone-ip>`. Check the IP shown in IP Webcam (it can change), that the server is started, and that both are on the same WiFi (not a guest network, which blocks devices from each other) |
 | `Cannot open camera` | Open the URL in a browser; phone and PC on the same WiFi; IP Webcam server running |
 | Picture lags seconds behind | Lower the resolution in IP Webcam; the node already keeps only the newest frame |
 | Stream keeps dropping | Disable the phone's power saving / screen-off; keep it charging |

@@ -35,9 +35,9 @@ USB, the UNO's 5 V pin or the Raspberry Pi.**
 ## 1. Flash the firmware
 
 ```bash
-scripts/flash_uno.sh                         # UNO R3 on /dev/ttyACM0
-scripts/flash_uno.sh /dev/ttyUSB0            # clone board (CH340 chip)
-scripts/flash_uno.sh /dev/ttyACM0 arduino:renesas_uno:minima   # UNO R4 Minima
+bash scripts/flash_uno.sh                         # UNO R3 on /dev/ttyACM0
+bash scripts/flash_uno.sh /dev/ttyUSB0            # clone board (CH340 chip)
+bash scripts/flash_uno.sh /dev/ttyACM0 arduino:renesas_uno:minima   # UNO R4 Minima
 ```
 
 ```powershell
@@ -59,7 +59,7 @@ pose as soon as they get power.
 ## 2. One-time Linux setup
 
 ```bash
-scripts/setup_uno_serial.sh
+bash scripts/setup_uno_serial.sh
 ```
 
 This gives the board a fixed name, `/dev/braccio`, and adds you to the
@@ -142,6 +142,7 @@ gripping at `95` and go towards `110` only if needed.
 
 | Problem | Check |
 |---|---|
+| `Lost /dev/braccio: device reports readiness to read but returned no data`, repeating | Run `bash scripts/check_uno_serial.sh` (with ROS stopped). Either another program is reading the port (ModemManager, Arduino IDE Serial Monitor, a second bridge), or the board browns out when the servos power up (servos on USB power / weak supply) |
 | `Cannot open /dev/...` | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio`; are you in `dialout`? |
 | Arm does not move, no errors | Is the shield's 5 V supply on? USB alone does not power the servos |
 | Arm moves but jerks or resets | Power supply too weak; use 5 V, 4 A or more |

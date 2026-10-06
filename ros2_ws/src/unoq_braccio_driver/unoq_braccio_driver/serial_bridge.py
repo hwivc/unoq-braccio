@@ -23,6 +23,7 @@ so RViz and manual_control begin from the same upright arm instead of an
 empty or folded model.
 """
 
+import os
 import threading
 import time
 
@@ -70,6 +71,7 @@ class SerialBridge(Node):
         self.have_status = False       # True once the board has reported its position
         self.dirty = False             # commanded has changed since the last send
         self.running = True
+        self.drops = 0                 # port losses since the board last answered
 
         self.status_pub = self.create_publisher(String, "/braccio/firmware_status", 10)
         self.joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
@@ -135,10 +137,17 @@ class SerialBridge(Node):
 
     def open_port(self) -> None:
         try:
-            port = serial.Serial(self.port, self.baud_rate, timeout=0.2)
+            # exclusive: a second program (or a second bridge) cannot open the
+            # port while we have it, instead of both silently stealing bytes.
+            extra = {"exclusive": True} if os.name == "posix" else {}
+            port = serial.Serial(self.port, self.baud_rate, timeout=0.2, **extra)
         except serial.SerialException as error:
+            busy = "lock" in str(error).lower() or "busy" in str(error).lower()
             self.get_logger().warning(
-                f"Cannot open {self.port} ({error}); retrying", throttle_duration_sec=10.0
+                f"Cannot open {self.port} ({error}); retrying"
+                + (". Another program has the port open: close the Arduino IDE "
+                   "Serial Monitor or any other serial_bridge." if busy else ""),
+                throttle_duration_sec=10.0,
             )
             return
         with self.lock:
@@ -160,7 +169,19 @@ class SerialBridge(Node):
             self.serial = None
             self.ready = False
             self.forget_commands()
+        self.drops += 1
         self.get_logger().error(f"Lost {self.port}: {reason}; reconnecting")
+        if self.drops >= 2:
+            self.get_logger().warning(
+                "The port keeps dropping before the arm answers. Usual causes: "
+                "(1) another program is reading the port - ModemManager, the "
+                "Arduino IDE Serial Monitor, or a second bridge; "
+                "(2) the board loses power when the servos switch on, about 2 s "
+                "after opening - power the servos from the shield's own 5 V "
+                "supply (4 A+), not USB. Run scripts/check_uno_serial.sh to "
+                "see which.",
+                throttle_duration_sec=60.0,
+            )
 
     def write(self, line: str) -> None:
         with self.lock:
@@ -204,6 +225,7 @@ class SerialBridge(Node):
                 self.baseline = dict(zip(JOINT_NAMES, status["pos"]))
                 self.mark_ready(line)
             self.have_status = True
+            self.drops = 0
             self.status_pub.publish(String(data=line))
             if bool(self.get_parameter("publish_joint_states").value):
                 self.publish_joint_states(status["pos"])

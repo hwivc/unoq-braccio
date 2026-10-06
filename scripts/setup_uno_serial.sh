@@ -12,5 +12,12 @@ sudo udevadm control --reload-rules
 sudo udevadm trigger
 sudo usermod -aG dialout "$USER"
 
+# brltty (braille display support) grabs CH340 USB-serial chips, which most
+# UNO clones use, and makes the port vanish.
+if dpkg -s brltty >/dev/null 2>&1; then
+  echo "NOTE: brltty is installed. If your UNO is a clone (CH340 chip) and"
+  echo "      /dev/ttyUSB0 disappears, remove it:  sudo apt remove brltty"
+fi
+
 echo "Done. Unplug and replug the UNO, then check:  ls -l /dev/braccio"
 echo "If you were just added to 'dialout', log out and back in first."

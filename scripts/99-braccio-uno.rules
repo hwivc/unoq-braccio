@@ -1,12 +1,16 @@
 # Give the Braccio's Arduino UNO a stable name, /dev/braccio, whichever
 # /dev/ttyACM* or /dev/ttyUSB* it lands on. Installed by setup_uno_serial.sh.
 # If more than one matching board is plugged in, the last one wins.
+# ID_MM_DEVICE_IGNORE stops ModemManager probing the board as a modem: it
+# opens the port and sends AT commands for several seconds after plug-in,
+# which steals the Braccio's replies ("device reports readiness to read but
+# returned no data").
 
 # Arduino UNO R3 (genuine, ATmega16U2)
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="braccio", MODE="0666"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0001", SYMLINK+="braccio", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0043", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0001", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
 # Arduino UNO R4 Minima / WiFi
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0069", SYMLINK+="braccio", MODE="0666"
-SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="1002", SYMLINK+="braccio", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0069", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="1002", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
 # UNO clones with a CH340 USB chip
-SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="braccio", MODE="0666"
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"

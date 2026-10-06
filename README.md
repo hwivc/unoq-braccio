@@ -72,7 +72,7 @@ Linux PC / Raspberry Pi 5 (ROS 2, cameras)  --USB-->  Arduino UNO + Braccio shie
 1. **Flash the UNO** (Arduino UNO R3; R4 Minima/WiFi also work):
 
    ```bash
-   scripts/flash_uno.sh /dev/ttyACM0            # Linux
+   bash scripts/flash_uno.sh /dev/ttyACM0            # Linux
    ```
    ```powershell
    .\scripts\flash_uno.ps1 -Port COM3           # Windows
@@ -81,7 +81,7 @@ Linux PC / Raspberry Pi 5 (ROS 2, cameras)  --USB-->  Arduino UNO + Braccio shie
 2. **One-time Linux setup** (fixed port name `/dev/braccio` + serial permission):
 
    ```bash
-   scripts/setup_uno_serial.sh                  # then log out and back in
+   bash scripts/setup_uno_serial.sh                  # then log out and back in
    ```
 
 3. **Start the bridge:**
