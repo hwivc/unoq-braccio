@@ -206,9 +206,10 @@ def create_cube_detector(
         resolved = find_model_file(model_path)
         if resolved is None:
             log(
-                "No Edge Impulse model found (set the 'model_path' parameter, or "
-                "EDGE_IMPULSE_CUBE_MODEL, or place a .lite file in the repository "
-                "root). Falling back to colour-blob detection.",
+                "No Edge Impulse model found. Download it once with: "
+                "ros2 run unoq_braccio_driver download_model "
+                "(or set the 'model_path' parameter / EDGE_IMPULSE_CUBE_MODEL). "
+                "Falling back to colour-blob detection.",
                 warn=True,
             )
         else:
@@ -220,8 +221,10 @@ def create_cube_detector(
                 )
                 return detector
             except Exception as exc:  # missing runtime, corrupt file, wrong shape, ...
+                hint = (" Install the runtime once: pip install --break-system-packages "
+                        "ai-edge-litert." if isinstance(exc, ImportError) else "")
                 log(
-                    f"Could not load Edge Impulse model '{resolved}': {exc}. "
+                    f"Could not load Edge Impulse model '{resolved}': {exc}.{hint} "
                     "Falling back to colour-blob detection.",
                     warn=True,
                 )

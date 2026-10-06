@@ -159,6 +159,21 @@ Controls and gripper calibration: [docs/manual_control.md](docs/manual_control.m
 
 ## Vision and Edge Impulse
 
+The cube detector uses an Edge Impulse model to find the cubes (colour then
+decides which cube is which). The model (~156 MB) is too big for GitHub, so
+download it once; without it the detector falls back to plain colour
+detection and logs a warning.
+
+```bash
+ros2 run unoq_braccio_driver download_model                  # saves it to ~/unoq-braccio/ (resumable, Ctrl+C safe)
+pip install --break-system-packages ai-edge-litert           # TensorFlow Lite runtime, once
+```
+
+Restart the launch afterwards; it should log `Cube detector: Edge Impulse model '...'`.
+
+- Cube detection project (this model): <https://studio.edgeimpulse.com/studio/975321>
+- Direct model link (float32): <https://studio.edgeimpulse.com/v1/api/975321/learn-data/3/model/tflite-float>
+
 ```bash
 ros2 launch unoq_braccio_bringup vision_usb.launch.py camera_index:=0 label:=object    # USB camera on the ROS machine
 cd test && python detect.py                                                           # try the cube model on images, no ROS
