@@ -171,6 +171,54 @@ class Terminal:
                 tty.setcbreak(self.fd)
 
 
+# -- smooth nudging --------------------------------------------------------------
+
+class Jog:
+    """Moves the fingertip by base angle and reach at a fixed height, with
+    every joint changing smoothly and each key press moving about the same.
+
+    solve_ik picks the steepest tool pitch that fits each target, so the
+    pitch jumps by 5 degrees every few millimetres of reach: the shoulder
+    swings back while you asked to go further, and one press moves 1-9 mm.
+    No single pitch covers the whole reach either (each spans ~7 cm). So the
+    pitch here is the middle of the range that fits at this reach: it slides
+    smoothly as you reach out and stays clear of the joint limits. The
+    servos only take whole degrees, so instead of rounding each joint on its
+    own (errors add up), the whole-degree combination whose fingertip lands
+    closest to the target is sent.
+    """
+
+    def __init__(self, send, height, gripper):
+        self.send, self.height, self.gripper = send, height, gripper
+        self.joints = None   # shoulder, elbow, wrist_vertical (floats)
+
+    def move(self, base, reach):
+        from unoq_braccio_driver.braccio_kinematics import forward_kinematics, planar_ik
+
+        fits = [p for p in range(-90, -9) if planar_ik(reach, self.height, p) is not None]
+        if not fits:
+            return False
+        middle = (fits[0] + fits[-1]) / 2.0
+        joints = planar_ik(reach, self.height, middle, near=self.joints)
+        if joints is None:  # the fitting range has a gap: use the closest that fits
+            joints = planar_ik(reach, self.height, min(fits, key=lambda p: abs(p - middle)),
+                               near=self.joints)
+        self.joints = joints
+        base = int(round(base))
+        angle = math.radians(base - 90.0)
+        target = (reach * math.cos(angle), reach * math.sin(angle), self.height)
+        best = None
+        for ds in (math.floor, math.ceil):
+            for de in (math.floor, math.ceil):
+                for dw in (math.floor, math.ceil):
+                    servos = [base, ds(joints[0]), de(joints[1]), dw(joints[2]), 90]
+                    miss = math.dist(forward_kinematics(servos), target)
+                    if best is None or miss < best[0]:
+                        best = (miss, servos)
+        self.send(best[1] + [self.gripper])
+        return True
+
+
 # -- the set-up node -------------------------------------------------------------
 
 class RealSetup(Node):
@@ -324,24 +372,26 @@ class RealSetup(Node):
         cube = self.setup["cube_size_mm"] / 1000.0
         print("\n== STEP 4/5: DROP POINTS ==")
         print("For each colour, move the gripper over where those cubes should go.")
-        print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer   Enter  save")
+        print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer 5 mm   "
+              "W / S  2 mm   Enter  save")
         bins = []
         for i, name in enumerate(names):
             base, reach = 90.0 + 30.0 + 20.0 * i, 0.25   # start on the arm's left
             print(f"\n  Drop point for {name.upper()} cubes:")
-            while not self.point(base, reach, DROP_HOVER) and base > 0:
+            jog = Jog(self.send, DROP_HOVER, POINT_GRIPPER)
+            while not jog.move(base, reach) and base > 0:
                 base -= 5.0
             while True:
                 key = term.key()
                 turn = {"+": 1, "=": 1, "-": -1, "_": -1, "]": 5, "[": -5}.get(key, 0)
-                out = {"w": 0.005, "s": -0.005}.get(key, 0.0)
+                out = {"w": 0.005, "s": -0.005, "W": 0.002, "S": -0.002}.get(key, 0.0)
                 if turn or out:
                     new_base = max(0.0, min(180.0, base + turn))
                     new_reach = reach + out
                     angle = math.radians(new_base - 90.0)
                     x, y = new_reach * math.cos(angle), new_reach * math.sin(angle)
                     if (solve_ik(x, y, cube / 2 + 0.02, 95) is not None
-                            and self.point(new_base, new_reach, DROP_HOVER)):
+                            and jog.move(new_base, new_reach)):
                         base, reach = new_base, new_reach
                     print(f"\r  base {base:.0f} deg, {reach * 100:.1f} cm out   ", end="", flush=True)
                 elif key in ("\n", "\r"):
@@ -390,7 +440,7 @@ class RealSetup(Node):
         print("\n== STEP 5/5: TOUCH CALIBRATION ==")
         print("Put ONE cube anywhere on the table, then press Enter: the arm moves over it.")
         print("Nudge until the closed fingertips are centred right over the cube, Enter saves.")
-        print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer")
+        print("  + / -  turn 1 degree   ] / [  5 degrees   w / s  further / nearer 5 mm   W / S  2 mm")
         print("  u  undo last point     d  done (at least 4; 6-8 spread out is best)")
         detector = self.touch_detector()
         cube = self.setup["cube_size_mm"] / 1000.0
@@ -422,9 +472,10 @@ class RealSetup(Node):
                     x, y = self.first_guess(u, v, shape)
                     base = 90.0 + math.degrees(math.atan2(y, x))
                     reach = math.hypot(x, y)
-                    if not self.point(base, reach, hover):
+                    jog = Jog(self.send, hover, POINT_GRIPPER)
+                    if not jog.move(base, reach):
                         base, reach = 90.0, 0.22
-                        self.point(base, reach, hover)
+                        jog.move(base, reach)
                     aiming = (u, v, base, reach)
                     print(f"\n  arm over the guess ({x * 100:.1f}, {y * 100:.1f}) cm - nudge it, Enter saves")
                 elif key == "u" and pixels:
@@ -439,10 +490,10 @@ class RealSetup(Node):
             else:
                 u, v, base, reach = aiming
                 turn = {"+": 1, "=": 1, "-": -1, "_": -1, "]": 5, "[": -5}.get(key, 0)
-                out = {"w": 0.005, "s": -0.005}.get(key, 0.0)
+                out = {"w": 0.005, "s": -0.005, "W": 0.002, "S": -0.002}.get(key, 0.0)
                 if turn or out:
                     new_base, new_reach = max(0.0, min(180.0, base + turn)), reach + out
-                    if self.point(new_base, new_reach, hover):
+                    if jog.move(new_base, new_reach):
                         aiming = (u, v, new_base, new_reach)
                     print(f"\r  base {aiming[2]:.0f} deg, {aiming[3] * 100:.1f} cm out   ",
                           end="", flush=True)

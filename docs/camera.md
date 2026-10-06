@@ -52,7 +52,8 @@ ros2 run unoq_braccio_driver real_setup
    and press Enter. Drop points must be at least 8 cm apart.
 5. **Touch calibration** (makes picks accurate). Put one cube anywhere on the
    table and press Enter: the arm moves over where it thinks the cube is.
-   Nudge it (`+` / `-` turn, `w` / `s` further / nearer) until the closed
+   Nudge it (`+` / `-` turn, `w` / `s` further / nearer by 5 mm, `W` / `S`
+   by 2 mm for the last bit) until the closed
    fingertips are centred right over the cube, then Enter. Move the cube and
    repeat: at least 4 points, 6-8 spread over where cubes and drop points will
    be is best; `u` undoes a point, `d` when done. It prints the error per
