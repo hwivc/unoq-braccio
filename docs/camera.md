@@ -91,7 +91,7 @@ over where the misses happen. Redo it whenever the camera or the arm moves.
 | `gripper_camera_source` | `1` | Gripper camera: USB index, `/dev/videoN`, or stream URL |
 | `camera_width` | `640` | Resize frames to this width (`0` = as is) |
 | `speed` | `60` | Arm speed, degrees per second |
-| `detector_backend` | `edge_impulse` | Or `color_blob` |
+| `detector_backend` | `color_blob` | Or `edge_impulse` (the 64x64 model is coarser and jitters more) |
 | `rviz` | `true` | Open RViz |
 
 ## Troubleshooting

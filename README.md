@@ -164,12 +164,32 @@ ros2 topic pub --once /braccio/joint_command sensor_msgs/msg/JointState \
 
 Controls and gripper calibration: [docs/manual_control.md](docs/manual_control.md).
 
+## Teach the arm to pick (real arm)
+
+Instead of calibrating the camera and the arm model, show the arm how to
+pick: each example stores what the camera saw and the servo angles you drove
+the arm to, and a small model learns camera -> servo angles. Servo offsets and
+camera angle do not matter.
+
+```bash
+ros2 launch unoq_braccio_bringup real.launch.py camera:=<camera>          # terminal 1
+ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=desk       # terminal 2: teach + test
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk  # run it
+```
+
+Data and models live in `~/.ros/braccio_teach/<session>/`. Same session name
+continues; a new name starts fresh (do that after moving or zooming the
+camera). `model:=model_0010` runs an older model.
+
 ## Vision and Edge Impulse
 
-The cube detector uses an Edge Impulse model to find the cubes (colour then
-decides which cube is which). The model (~156 MB) is too big for GitHub, so
-download it once; without it the detector falls back to plain colour
-detection and logs a warning.
+In simulation the cube detector uses an Edge Impulse model to find the cubes
+(colour then decides which cube is which). On the real arm the default is
+plain colour detection with the colours learned by `real_setup`: it is steadier
+than the 64x64 model on a real camera. Use the model there with
+`real.launch.py detector_backend:=edge_impulse`. The model (~156 MB) is too
+big for GitHub, so download it once; without it the detector falls back to
+plain colour detection and logs a warning.
 
 ```bash
 ros2 run unoq_braccio_driver download_model                  # saves it to ~/unoq-braccio/ (resumable, Ctrl+C safe)

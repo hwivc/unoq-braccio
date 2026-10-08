@@ -37,6 +37,7 @@ from unoq_braccio_driver.color_vision import image_to_rgb, to_hsv
 from unoq_braccio_driver import braccio_workspace as ws
 from unoq_braccio_driver.table_projection import (
     PinholeDownProjection,
+    apply_homography,
     fit_homography,
     focal_from_cube,
     reprojection_errors,
@@ -472,18 +473,29 @@ class RealSetup(Node):
         self.save()
 
     def touch_detector(self):
-        """The same cube finder the running detector uses (Edge Impulse model
-        if available, else the learned colours), so both measure the same point."""
+        """The same cube finder the running detector uses by default on the
+        real arm (the learned colours), so both measure the same point."""
         from unoq_braccio_driver.cube_model_backend import create_cube_detector
 
         cube = self.setup["cube_size_mm"] / 1000.0
         height = self.setup.get("camera_height_mm", 600) / 1000.0
         fx = float(self.setup.get("camera_fx_px", 0) or 500.0)
         ws.apply_config({"cube_size": cube, "cube_hsv": self.setup["cube_hsv"]})
-        return create_cube_detector("edge_impulse", "", 0.3, 0.45, cube, fx, height - cube / 2)
+        return create_cube_detector("color_blob", "", 0.3, 0.45, cube, fx, height - cube / 2)
 
-    def first_guess(self, u, v, shape):
-        """Table (x, y) of pixel (u, v) from the measured camera (steps 1-2)."""
+    def first_guess(self, u, v, shape, pixels=(), targets=()):
+        """Table (x, y) of pixel (u, v) to start nudging from.
+
+        The measured camera (steps 1-2) is only a rough guess, so the points
+        already nudged into place correct it: from 4 points on they are fitted
+        directly, before that the guess is shifted by their average miss. A
+        cube left where a point was saved therefore comes back to that point.
+        """
+        if len(pixels) >= 4:
+            try:
+                return apply_homography(fit_homography(pixels, targets), u, v)
+            except ValueError:
+                pass  # e.g. points on a line so far: fall back to the camera
         s = self.setup
         if not all(k in s for k in ("camera_x_mm", "camera_y_mm", "camera_height_mm")):
             return 0.22, 0.0
@@ -491,7 +503,14 @@ class RealSetup(Node):
         camera = PinholeDownProjection(fx, fx, shape[1] / 2.0, shape[0] / 2.0,
                                        s["camera_x_mm"] / 1000.0, s["camera_y_mm"] / 1000.0,
                                        s["camera_height_mm"] / 1000.0)
-        return camera.to_table(u, v, s["cube_size_mm"] / 2000.0)
+        plane = s["cube_size_mm"] / 2000.0
+        x, y = camera.to_table(u, v, plane)
+        if pixels:
+            misses = [(tx - gx, ty - gy) for (pu, pv), (tx, ty) in zip(pixels, targets)
+                      for gx, gy in [camera.to_table(pu, pv, plane)]]
+            x += sum(m[0] for m in misses) / len(misses)
+            y += sum(m[1] for m in misses) / len(misses)
+        return x, y
 
     def step_touch(self, term):
         print("\n== STEP 5/5: TOUCH CALIBRATION ==")
@@ -527,7 +546,7 @@ class RealSetup(Node):
                 if key in ("\n", "\r") and shape is not None and len(seen) == 1:
                     x1, y1, x2, y2 = seen[0][:4]
                     u, v = (x1 + x2) / 2.0, (y1 + y2) / 2.0
-                    x, y = self.first_guess(u, v, shape)
+                    x, y = self.first_guess(u, v, shape, pixels, targets)
                     base = 90.0 + math.degrees(math.atan2(y, x))
                     reach = math.hypot(x, y)
                     jog = Jog(self.send, hover, POINT_GRIPPER)

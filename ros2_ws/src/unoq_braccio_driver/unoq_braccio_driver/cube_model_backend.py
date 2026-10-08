@@ -53,7 +53,10 @@ class ColorBlobCubeDetector(CubeBoxDetector):
 
         self._ranges = ws.CUBE_HSV
         cube_px = cube_size_m * camera_fx / camera_height_m
-        self._min_area, self._max_area = 0.4 * cube_px ** 2, 2.5 * cube_px ** 2
+        # Wide on purpose: the camera scale is only an estimate (from the
+        # typed-in camera or the touch points) and shading eats into the blob,
+        # so a real cube can come out well under cube_px squared.
+        self._min_area, self._max_area = 0.25 * cube_px ** 2, 4.0 * cube_px ** 2
 
     def find_cubes(self, rgb: np.ndarray):
         import cv2

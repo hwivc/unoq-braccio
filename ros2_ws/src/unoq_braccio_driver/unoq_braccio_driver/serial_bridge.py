@@ -28,6 +28,8 @@ empty or folded model.
 
 import os
 import threading
+
+import yaml
 import time
 
 import rclpy
@@ -59,6 +61,10 @@ class SerialBridge(Node):
         self.declare_parameter("publish_joint_states", True)
         # Restart the UNO on connect so the arm always begins standing up.
         self.declare_parameter("reset_on_connect", True)
+        # rviz_mirror in this file: joints drawn as 180 - angle in RViz only
+        # (the arm turns the other way from the model). Commands are untouched.
+        self.declare_parameter("setup_file", "~/.ros/braccio_setup.yaml")
+        self.rviz_mirror = self.load_rviz_mirror(str(self.get_parameter("setup_file").value))
 
         self.port = str(self.get_parameter("serial_port").value)
         self.baud_rate = int(self.get_parameter("baud_rate").value)
@@ -272,7 +278,20 @@ class SerialBridge(Node):
         self.write(speed_command(float(self.get_parameter("speed_deg_s").value)))
         self.get_logger().info(f"Arm ready ({line})")
 
+    def load_rviz_mirror(self, path):
+        try:
+            with open(os.path.expanduser(path), encoding="utf-8") as handle:
+                names = (yaml.safe_load(handle) or {}).get("rviz_mirror") or []
+        except OSError:
+            names = []
+        names = [n for n in names if n in JOINT_NAMES]
+        if names:
+            self.get_logger().info(f"RViz shows these joints mirrored: {', '.join(names)}")
+        return names
+
     def publish_joint_states(self, servo_degrees) -> None:
+        servo_degrees = [180 - v if name in self.rviz_mirror else v
+                         for name, v in zip(JOINT_NAMES, servo_degrees)]
         msg = JointState()
         msg.header.stamp = self.get_clock().now().to_msg()
         msg.name = list(URDF_JOINT_NAMES)

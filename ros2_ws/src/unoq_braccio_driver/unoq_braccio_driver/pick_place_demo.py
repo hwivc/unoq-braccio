@@ -19,12 +19,14 @@ hardware nothing listens and the fingers alone hold the cube.
 """
 
 import json
+import math
 import os
 import threading
 import time
 from enum import Enum
 
 import rclpy
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
 from sensor_msgs.msg import JointState
 from std_msgs.msg import String
@@ -60,7 +62,7 @@ class State(str, Enum):
 class PickPlaceDemo(Node):
     def __init__(self) -> None:
         super().__init__("pick_place_demo")
-        self.declare_parameter("colors", ["red", "blue", "yellow"])
+        self.declare_parameter("colors", [""])        # [""] = every colour that has a bin
         self.declare_parameter("step_wait", 2.0)      # >= joint_trajectory_bridge move_time
         self.declare_parameter("gripper_wait", 2.0)   # let the fingers close and settle before lifting
         self.declare_parameter("detect_timeout", 6.0)
@@ -143,7 +145,11 @@ class PickPlaceDemo(Node):
     def ik(self, x, y, z, gripper, wrist_rotation=90):
         pose = solve_ik(x, y, z, gripper, wrist_rotation)
         if pose is None:
-            raise ValueError(f"unreachable target ({x:.3f}, {y:.3f}, {z:.3f})")
+            raise ValueError(
+                f"unreachable target ({x:.3f}, {y:.3f}, {z:.3f}): "
+                f"{math.hypot(x, y) * 100:.1f} cm from the base at "
+                f"{90.0 + math.degrees(math.atan2(y, x)):.0f} deg"
+            )
         return pose
 
     def overhead_scan(self, color: str = ""):
@@ -181,9 +187,17 @@ class PickPlaceDemo(Node):
         bin_ = ws.BIN_BY_CUBE_COLOR[cube_color]
         seen = (scan or {}).get("bins", {}).get(bin_.name)
         cx, cy = (seen["x"], seen["y"]) if seen else bin_.centre
+        # A drop point near the edge of the arm's reach (e.g. base ~0 deg)
+        # loses some slots, so only use slots the arm can get to; the centre
+        # was checked reachable when the drop point was set up.
+        reachable = [
+            (dx, dy) for dx, dy in ws.BIN_SLOT_OFFSETS
+            if solve_ik(cx + dx, cy + dy, ws.HOVER_Z) is not None
+            and solve_ik(cx + dx, cy + dy, ws.release_z(bin_)) is not None
+        ] or [(0.0, 0.0)]
         slot = self.slot_used.get(bin_.name, 0)
         self.slot_used[bin_.name] = slot + 1
-        dx, dy = ws.BIN_SLOT_OFFSETS[slot % len(ws.BIN_SLOT_OFFSETS)]
+        dx, dy = reachable[slot % len(reachable)]
         return bin_, cx + dx, cy + dy
 
     def handle_cube(self, cube: dict, scan: dict) -> bool:
@@ -249,7 +263,8 @@ class PickPlaceDemo(Node):
 
     def run(self) -> None:
         time.sleep(1.0)  # let publishers and detectors discover each other
-        wanted = [str(c).lower() for c in self.get_parameter("colors").value]
+        wanted = [str(c).lower() for c in self.get_parameter("colors").value if c]
+        wanted = wanted or list(ws.BIN_BY_CUBE_COLOR)
         home = list(POSES["ready"])
         home[5] = ws.GRIPPER_OPEN
 
@@ -300,15 +315,22 @@ class PickPlaceDemo(Node):
 def main() -> None:
     rclpy.init()
     node = PickPlaceDemo()
-    spinner = threading.Thread(target=rclpy.spin, args=(node,), daemon=True)
+    executor = SingleThreadedExecutor()
+    executor.add_node(node)
+    spinner = threading.Thread(target=executor.spin, daemon=True)
     spinner.start()
     try:
         node.run()
     except KeyboardInterrupt:
         pass
     finally:
+        # Stop the spin thread before tearing down, otherwise the C++
+        # executor is destroyed while still running and the process aborts
+        # with "terminate called without an active exception".
+        executor.shutdown()
+        spinner.join(timeout=2.0)
         node.destroy_node()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":
