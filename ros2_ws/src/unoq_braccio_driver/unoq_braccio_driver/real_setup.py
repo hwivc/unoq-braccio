@@ -364,7 +364,10 @@ class RealSetup(Node):
 
         print("\n== STEP 3/5: CUBE COLOURS ==")
         print("Put ONE cube on the table right under the camera.")
-        print("  s  save the colour shown     u  undo last     n  done")
+        print("  s  save the colour shown     u  undo last     x  forget the saved colours     n  done")
+        kept = dict(self.setup.get("cube_hsv") or {})
+        if kept:
+            print(f"  Already saved: {', '.join(kept)} (saving one of these again replaces it).")
         colors = []
         fx_samples = []
         last_print = 0.0
@@ -395,29 +398,34 @@ class RealSetup(Node):
             if key == "s" and current and not current[6]:
                 name, hue, half, ranges, box, shape, _ = current
                 unique, n = name, 2
+                kept.pop(unique, None)  # same colour again: the new reading replaces it
                 while unique in [c["name"] for c in colors]:
                     unique, n = f"{name}{n}", n + 1
                 colors.append({"name": unique, "hue": hue, "half": half, "ranges": ranges})
                 # The cube's known size also measures the camera's zoom.
                 rows, cols = shape[:2]
                 cu, cv_ = (box[0] + box[2]) / 2.0, (box[1] + box[3]) / 2.0
-                if abs(cu - cols / 2) < cols / 4 and abs(cv_ - rows / 2) < rows / 4:
+                if ("camera_height_mm" in self.setup and "cube_size_mm" in self.setup
+                        and abs(cu - cols / 2) < cols / 4 and abs(cv_ - rows / 2) < rows / 4):
                     fx_samples.append(focal_from_cube(
                         math.sqrt(box[4]), self.setup["camera_height_mm"] / 1000.0,
                         self.setup["cube_size_mm"] / 1000.0))
                 print(f"\n  saved colour {unique}. Next cube, or n when done.")
             elif key == "u" and colors:
                 print(f"\n  removed {colors.pop()['name']}")
+            elif key == "x" and kept:
+                print(f"\n  forgot {', '.join(kept)}")
+                kept = {}
             elif key == "n":
-                if not colors:
+                if not colors and not kept:
                     print("\n  save at least one colour first (s)")
                     continue
                 break
-        self.setup["cube_hsv"] = {c["name"]: c["ranges"] for c in colors}
+        self.setup["cube_hsv"] = {**kept, **{c["name"]: c["ranges"] for c in colors}}
         if fx_samples:
             self.setup["camera_fx_px"] = round(sorted(fx_samples)[len(fx_samples) // 2], 1)
         self.save()
-        print(f"\nSaved colours: {', '.join(c['name'] for c in colors)}")
+        print(f"\nSaved colours: {', '.join(self.setup['cube_hsv'])}")
 
     def step_drops(self, term):
         names = list(self.setup.get("cube_hsv", {}))
@@ -627,7 +635,7 @@ class RealSetup(Node):
         with Terminal() as term:
             try:
                 for name, step in steps:
-                    if name != "camera" and "cube_size_mm" not in self.setup:
+                    if name in ("drops", "touch") and "cube_size_mm" not in self.setup:
                         print("Run the camera step first (it asks for the cube size).")
                         return
                     if name in ("drops", "touch") and not self.setup.get("cube_hsv"):

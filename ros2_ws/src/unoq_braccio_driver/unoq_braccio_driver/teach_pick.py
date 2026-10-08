@@ -10,6 +10,8 @@ second one on the arm starts at its own guess and you only correct it. Every
 ``test_every`` examples (default 5) it offers a test: put a cube anywhere and
 the arm tries on its own; ``s`` stops it, and a miss can be corrected on the
 spot, which becomes a new example right where the model was weakest.
+``R`` lists examples that disagree with their neighbours (offering to delete
+them) and where tests missed.
 
 Everything is kept in ~/.ros/braccio_teach/<session>/ (see pick_learning).
 Run the same session again to continue; use a new session name after moving
@@ -419,6 +421,25 @@ class TeachPick(ArmLink):
         if self.yes_no(term, "  Correct it? (leave the cube where it is, then drive the arm onto it)"):
             self.record_example(term, kind="correction")
 
+    # -- review --------------------------------------------------------------------
+
+    def review(self, term):
+        """Print suspect examples and misses; offer to delete each suspect."""
+        print("\n\n" + "\n".join(pl.review_text(self.examples, self.session.tests())))
+        suspects = pl.suspect_examples(self.examples)
+        if not suspects or not self.yes_no(term, "  Go through the examples worth checking one by one?"):
+            return
+        removed = 0
+        for s in suspects:
+            print(f"\n  #{s['index'] + 1} at ({s['x']:.0f}, {s['y']:.0f}) px: {'; '.join(s['reasons'])}")
+            if self.yes_no(term, "  Delete it?") and self.session.remove_example(s["id"]):
+                removed += 1
+        if removed:
+            self.examples = self.session.examples()
+            self.refit()
+            self.save_model()
+            print(f"  removed {removed} example(s).")
+
     # -- drop poses ------------------------------------------------------------------
 
     def teach_drops(self, term):
@@ -479,7 +500,7 @@ class TeachPick(ArmLink):
             print(f"\n[{len(self.examples)} examples | {self.model_text()} | "
                   f"drops: {', '.join(drops) or 'none'}] {self.success_rate()}")
             print("PLACE one cube.  Enter = record example   T = test   D = drop poses   "
-                  "U = undo last example   Q = quit")
+                  "R = review   U = undo last example   Q = quit")
             last = 0.0
             while True:
                 key = term.key(0.2)
@@ -499,6 +520,8 @@ class TeachPick(ArmLink):
                     self.test(term)
                 elif key == "d":
                     self.teach_drops(term)
+                elif key == "r":
+                    self.review(term)
                 elif key == "u":
                     gone = self.session.remove_last_example()
                     if gone:

@@ -2,6 +2,7 @@
 
     ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk
     ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk model:=model_0010
+    ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk colors:=red drop:=side
 
 Teach first:  ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=desk
 """
@@ -24,6 +25,12 @@ def generate_launch_description():
                               description="Cube colours and gripper values (from real_setup)."),
         DeclareLaunchArgument("unsure_px", default_value="60.0",
                               description="Leave cubes further than this from every example."),
+        DeclareLaunchArgument("colors", default_value="",
+                              description="Only these colours, e.g. red,blue. '' = every colour."),
+        DeclareLaunchArgument("drop", default_value="auto",
+                              description="auto (taught drop pose, else side) | taught | side."),
+        DeclareLaunchArgument("drop_base", default_value="0",
+                              description="Base angle for side drops (0 = far end of the l key)."),
         Node(
             package="unoq_braccio_driver",
             executable="learned_pick_demo",
@@ -33,6 +40,9 @@ def generate_launch_description():
                 "model": ParameterValue(arg("model"), value_type=str),
                 "setup_file": arg("setup_file"),
                 "unsure_px": ParameterValue(arg("unsure_px"), value_type=float),
+                "colors": ParameterValue(arg("colors"), value_type=str),
+                "drop": arg("drop"),
+                "drop_base": ParameterValue(arg("drop_base"), value_type=int),
             }],
             output="screen",
         ),

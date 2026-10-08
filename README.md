@@ -1,9 +1,10 @@
 # Arduino Braccio + ROS 2
 
-A TinkerKit Braccio arm that finds coloured cubes with a camera (colour
-detection + Edge Impulse), works out the joint angles with inverse
-kinematics, and sorts each cube into the bin of its colour. It runs in Gazebo
-simulation, and on the real arm with an **Arduino UNO over USB serial**.
+A TinkerKit Braccio arm that finds coloured cubes with an overhead camera and
+sorts them. On the **real arm** (Arduino UNO over USB serial) you teach it to
+pick by driving it onto cubes a few dozen times; a small learned model (kNN)
+then maps what the camera sees straight to servo angles, so no camera or arm
+calibration is needed. In **Gazebo simulation** it uses inverse kinematics.
 
 <p align="center">
   <img src="docs/braccio.gif" width="800" alt="Braccio demo">
@@ -14,9 +15,10 @@ simulation, and on the real arm with an **Arduino UNO over USB serial**.
 | <img width="400" alt="Gazebo simulation" src="https://github.com/user-attachments/assets/7736b383-4374-40f8-bcf9-347998eaff60" /> | <img width="400" alt="Braccio on the bench" src="https://github.com/user-attachments/assets/db8d983e-142a-4fbe-8bbe-c46fc83fc3e3" /> |
 
 **Contents:** [Build](#build) · [Simulation](#simulation) ·
-[Real arm](#real-arm-arduino-uno) · [Move the arm](#move-the-arm) ·
-[Vision](#vision-and-edge-impulse) · [Troubleshooting](#troubleshooting) ·
-[Layout](#repository-layout) · [Docs](#more-documentation)
+[Real arm](#real-arm-arduino-uno) · [Teach it to pick](#teach-the-real-arm-to-pick) ·
+[Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
+[Troubleshooting](#troubleshooting) · [Layout](#repository-layout) ·
+[Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
 
 ## Build
 
@@ -66,82 +68,140 @@ conventions): [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_
 ## Real arm (Arduino UNO)
 
 ```text
-Linux PC / Raspberry Pi 5 (ROS 2, cameras)  --USB-->  Arduino UNO + Braccio shield  -->  servos
+PC / Raspberry Pi 5 (ROS 2, camera)  --USB-->  Arduino UNO + Braccio shield  -->  6 servos
 ```
 
-1. **Flash the UNO** (Arduino UNO R3; R4 Minima/WiFi also work):
+**Hardware:** TinkerKit Braccio with its shield on an Arduino UNO R3 (R4
+Minima/WiFi also work), a 5 V supply of 4 A or more for the servos, and an
+overhead camera: a USB webcam (`camera:=0`) or a phone running the IP Webcam
+app (`camera:=http://<phone-ip>:8080/video`). Power the servos from the
+shield's own supply, never from USB.
+
+1. **Flash the UNO** (once):
 
    ```bash
    bash scripts/flash_uno.sh /dev/ttyACM0            # Linux
    ```
    ```powershell
-   .\scripts\flash_uno.ps1 -Port COM3           # Windows
+   .\scripts\flash_uno.ps1 -Port COM3                # Windows
    ```
 
-2. **One-time Linux setup** (fixed port name `/dev/braccio` + serial permission):
+2. **Serial port setup** (once on Linux: fixed name `/dev/braccio` + permission):
 
    ```bash
    bash scripts/setup_uno_serial.sh                  # then log out and back in
    ```
 
-3. **Start the bridge:**
+3. **Check the arm moves** (bridge only, no camera):
 
    ```bash
    ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio
-   ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio speed:=40 rviz:=true
    ```
 
-Power the servos from the shield's own 5 V supply (4 A or more), never from
-USB. On power-up the arm stands straight up, and RViz shows it upright from the
-start; the arm then waits about 8 s while the UNO resets and gently powers
-up its servos. Wiring, serial protocol and troubleshooting:
-[docs/hardware.md](docs/hardware.md).
+   On power-up the arm stands straight up and waits about 8 s while the UNO
+   resets and powers its servos gently. Wiring, serial protocol and
+   troubleshooting: [docs/hardware.md](docs/hardware.md).
 
-### Real pick and place with a camera
+## Teach the real arm to pick
 
-The overhead camera can be a USB webcam (`camera:=0`) or a WiFi stream, e.g.
-a phone running the IP Webcam app (`camera:=http://<phone-ip>:8080/video`).
+Each example stores what the camera saw (cube position and angle) and the
+servo angles you drove the arm to. The model blends the nearest examples
+(kNN), so servo offsets, bent links and a tilted camera do not matter: it
+repeats what the real arm did. Every 5 examples it also tries polynomial and
+small neural-network models and keeps whichever predicts best.
 
-1. Mount the camera **looking straight down**, top of the picture pointing the
-   way the arm faces.
-2. Start the arm and camera (this includes everything `hardware.launch.py`
-   starts; never run both):
+**1. Mount the camera** looking down at the table, so it sees the whole area
+where cubes go. Do not move or zoom it afterwards (if you do, start a new
+session).
 
-   ```bash
-   ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
-     camera:=http://192.168.1.192:8080/video
-   ```
+**2. Start the arm and camera** (terminal 1; it includes `hardware.launch.py`,
+never run both):
 
-3. In a second terminal, run the step-by-step set-up:
+```bash
+ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
+  camera:=http://192.168.1.192:8080/video
+```
 
-   ```bash
-   ros2 run unoq_braccio_driver real_setup
-   ```
+**3. Teach it your cube colours** (terminal 2). Put one cube under the camera,
+`s` saves its colour, next cube, `n` when done. Run it again any time to add a
+colour; the ones already saved are kept (`x` forgets them).
 
-   | Step | You do |
-   |---|---|
-   | 1 Camera direction | `+` / `-` turn the arm until it points at the spot under the camera, Enter |
-   | 2 Measurements | Type distance base-to-that-spot, camera height, cube size (mm) |
-   | 3 Colours | One cube at a time under the camera: `s` saves the colour shown, `n` done |
-   | 4 Drop points | Per colour: `+` / `-` turn, `w` / `s` further / nearer (`W` / `S` fine), Enter saves |
-   | 5 Touch calibration | Put a cube anywhere, Enter (arm moves over it), nudge until centred (`W` / `S` for fine 2 mm steps), Enter. Repeat 6-8 times spread out, `d` done. Corrects camera tilt / rotation and arm errors |
+```bash
+ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=colors
+```
 
-   In steps 4 and 5 you can also move single joints, 1 degree per press:
-   `j`/`l` base, `i`/`k` shoulder, `y`/`h` elbow, `t`/`g` wrist (it never lets the
-   gripper go into the table).
+Restart terminal 1 after adding colours.
 
-   It saves everything to `~/.ros/braccio_setup.yaml`. Restart step 2 afterwards.
-   Redo one step later: `ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=touch`
-   (or `camera`, `colors`, `drops`).
+**4. Record examples** (terminal 2):
 
-4. Sort the cubes:
+```bash
+ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=desk
+```
 
-   ```bash
-   ros2 launch unoq_braccio_bringup real_pick_place.launch.py
-   ```
+For each example, put ONE cube down and press Enter. The camera reads it, then:
 
-No gripper camera is needed (`gripper_camera:=false` is the default). Full
-guide: [docs/camera.md](docs/camera.md).
+| Stage | You do |
+|---|---|
+| ABOVE | Drive the open gripper above the cube, Enter |
+| GRAB | Lower the open fingers around it, Enter |
+| CLOSE | Close (`C`), lift (e.g. `k`), Enter |
+| CHECK | `y` if it holds the cube (saved), `n` if not (not saved) |
+
+Keys: `j`/`l` base, `i`/`k` shoulder, `y`/`h` elbow, `t`/`g` wrist, `r`/`f`
+roll, `o`/`c` gripper (`O` open, `C` grip), Tab switches 1/5 degree steps,
+Esc cancels the example. From the second example on, the arm starts at its own
+guess, so you only correct it.
+
+Tips that matter most:
+
+- **Spread the examples** over the whole area, about every 3-4 cm, with the
+  cube at different angles. 25-40 examples cover a desk-sized area.
+- **Reach each spot the same way.** Keep a similar posture (e.g. elbow high,
+  wrist tipped down) in neighbouring examples; two different postures for
+  the same spot get averaged into one that misses.
+- Every 5 examples it offers a **test**: put a cube anywhere, the arm picks on
+  its own (`s` stops it). If it misses, answer `y` to "Correct it?" and drive
+  it onto the cube: that becomes an example exactly where it was weakest.
+- Cubes more than 60 px from every example are refused, not guessed.
+
+Menu keys: Enter record · `T` test · `D` drop poses · `R` review · `U` undo
+last example · `Q` quit. Everything is saved in
+`~/.ros/braccio_teach/<session>/`; run the same session again to continue.
+
+**5. Review and clean up.** Press `R` in `teach_pick` (or, without the arm,
+`python3 -m unoq_braccio_driver.pick_learning desk` from
+`ros2_ws/src/unoq_braccio_driver`). It lists examples whose angles disagree
+with their neighbours or whose camera reading wobbled, offers to delete them,
+and shows where tests missed so you know where to teach more.
+
+**6. Where cubes go.** Either teach a drop pose per colour (`D` in
+`teach_pick`), or skip it: then cubes are dropped at the far end of the base
+rotation (`l` key direction), reaching out as far as they were picked.
+
+**7. Run it** (terminal 2, with terminal 1 still running):
+
+```bash
+# every colour, until no cube it can pick is left
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk
+
+# one colour, leave the others
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk colors:=red
+
+# several colours, always drop at the side (ignore taught drop poses)
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk colors:=red,blue drop:=side
+```
+
+Options: `drop:=auto` (taught pose if there is one, else side; default),
+`drop:=taught` (only colours with a taught pose), `drop:=side`;
+`drop_base:=0` the base angle for side drops; `model:=model_0010` an older
+model; `unsure_px:=60` how far from examples it still tries. Each pick is
+checked with the camera; a cube is tried twice before it is left. Ctrl+C
+freezes the arm. Watch it with `ros2 topic echo /task/state`.
+
+Before kNN, the real arm used a measured camera and inverse kinematics
+(`real_setup` with all steps, then `real_pick_place.launch.py`). That still
+works and is described in [docs/camera.md](docs/camera.md), but it needs
+careful calibration and missed more often.
 
 ## Move the arm
 
@@ -163,23 +223,6 @@ ros2 topic pub --once /braccio/joint_command sensor_msgs/msg/JointState \
 ```
 
 Controls and gripper calibration: [docs/manual_control.md](docs/manual_control.md).
-
-## Teach the arm to pick (real arm)
-
-Instead of calibrating the camera and the arm model, show the arm how to
-pick: each example stores what the camera saw and the servo angles you drove
-the arm to, and a small model learns camera -> servo angles. Servo offsets and
-camera angle do not matter.
-
-```bash
-ros2 launch unoq_braccio_bringup real.launch.py camera:=<camera>          # terminal 1
-ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=desk       # terminal 2: teach + test
-ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=desk  # run it
-```
-
-Data and models live in `~/.ros/braccio_teach/<session>/`. Same session name
-continues; a new name starts fresh (do that after moving or zooming the
-camera). `model:=model_0010` runs an older model.
 
 ## Vision and Edge Impulse
 
@@ -218,7 +261,8 @@ Keep API keys in `EDGE_IMPULSE_API_KEY`, never in committed files. Details:
 | Sim arm does not move | `ros2 topic hz /clock` (must tick) and `ros2 control list_controllers` |
 | Is anything commanding the arm? | `ros2 topic echo /braccio/joint_command` |
 | Real arm status | `ros2 topic echo /braccio/firmware_status` |
-| Real camera: where does it see the cubes? | `ros2 topic echo /vision/cube_target` |
+| Real camera: which cubes does it see? | open `teach_pick`: its menu line shows the cubes it sees right now |
+| Learned picks miss | `R` in `teach_pick`, then teach where it misses |
 | Which serial port? | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio` |
 | Layout / IK / protocol / calibration checks (no ROS needed) | `python ros2_ws/src/unoq_braccio_driver/test/test_workspace.py` (also `test_protocol.py`, `test_camera_calibration.py`) |
 
@@ -226,7 +270,7 @@ Keep API keys in `EDGE_IMPULSE_API_KEY`, never in committed files. Details:
 
 ```text
 firmware/braccio_uno_firmware/   Arduino UNO serial firmware (servos only)
-ros2_ws/src/unoq_braccio_driver/ ROS 2 nodes: serial bridge, kinematics, vision, pick and place
+ros2_ws/src/unoq_braccio_driver/ ROS 2 nodes: serial bridge, vision, teaching (teach_pick, pick_learning), pick and place
 ros2_ws/src/unoq_braccio_sim/    URDF, Gazebo world, controllers
 ros2_ws/src/unoq_braccio_bringup/ Launch files
 scripts/                         Flashing and setup scripts
@@ -241,6 +285,7 @@ app_lab/, web_app/               Arduino UNO Q apps and browser dashboard (alter
 |---|---|
 | Real arm: wiring, protocol, troubleshooting | [docs/hardware.md](docs/hardware.md) |
 | Real camera (USB / phone IP Webcam) and calibration | [docs/camera.md](docs/camera.md) |
+| What to build next: stacking, building, models | [docs/learning_roadmap.md](docs/learning_roadmap.md) |
 | Manual control and gripper calibration | [docs/manual_control.md](docs/manual_control.md) |
 | Simulation internals | [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_sim/README.md) |
 | Install on Windows / macOS / Linux | [docs/platform-setup.md](docs/platform-setup.md) |

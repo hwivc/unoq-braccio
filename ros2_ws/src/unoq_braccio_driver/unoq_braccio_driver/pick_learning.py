@@ -415,6 +415,109 @@ def train(examples):
     return fitted, scores
 
 
+# -- reviewing examples and tests ----------------------------------------------------
+
+JOINT_LABELS = ["base", "shoulder", "elbow", "wrist"]
+
+
+def suspect_examples(examples, min_deg=10.0, radius_px=60.0, max_jitter_px=5.0):
+    """Examples worth checking, worst first.
+
+    Each example is compared with what its neighbours alone predict (kNN
+    without it). The one that disagrees most, by ``min_deg`` or more on any
+    joint with a neighbour within ``radius_px``, is flagged and left out of
+    everyone else's neighbours, and the rest are checked again, so one bad
+    example does not make the good ones around it look bad too. Such an
+    example is a posture unlike the others around it, and blending it in
+    pulls nearby picks off. A camera wobble above ``max_jitter_px`` means
+    its position may be off. Returns dicts with index (0-based), id, x/y px,
+    nearest_px, jitter, the worst joint (``pose``, ``joint``, ``value``,
+    ``neighbours``, ``error``) and ``reasons``.
+    """
+    def disagreement(i, pool):
+        rest = [examples[j] for j in pool if j != i]
+        if not rest:
+            return None
+        guess = PickModel.fit(rest, Knn(4)).predict(examples[i])
+        worst = max(((pose, j) for pose in ("above", "grab") for j in range(ARM)),
+                    key=lambda pj: abs(examples[i][pj[0]][pj[1]] - guess[pj[0]][pj[1]]))
+        pose, j = worst
+        value, typical = examples[i][pose][j], guess[pose][j]
+        return {"pose": pose, "joint": JOINT_LABELS[j], "value": value, "neighbours": typical,
+                "error": float(abs(value - typical)), "nearest_px": guess["nearest_px"]}
+
+    pool = set(range(len(examples)))
+    odd = {}
+    while True:
+        found = [(i, disagreement(i, pool)) for i in sorted(pool)]
+        found = [(i, d) for i, d in found
+                 if d and d["nearest_px"] <= radius_px and d["error"] >= min_deg]
+        if not found:
+            break
+        i, d = max(found, key=lambda f: f[1]["error"])
+        odd[i] = d
+        pool.discard(i)
+
+    out = []
+    for i, e in enumerate(examples):
+        d = odd.get(i)
+        reasons = [f"{d['pose']} {d['joint']} {d['value']} but neighbours say {d['neighbours']}"] if d else []
+        jitter = float(e.get("jitter", 0.0))
+        if jitter > max_jitter_px:
+            reasons.append(f"camera wobble {jitter:.1f} px")
+        if not reasons:
+            continue
+        out.append({"index": i, "id": e.get("id"), "kind": e.get("kind", "teach"),
+                    "x": e["u"] * 640.0, "y": e["v"] * 640.0, "jitter": jitter,
+                    "pose": None, "joint": None, "value": None, "neighbours": None,
+                    "error": 0.0, "nearest_px": None, **(d or {}), "reasons": reasons})
+    return sorted(out, key=lambda s: (s["error"], s["jitter"]), reverse=True)
+
+
+def misses(tests, examples=(), fixed_px=20.0):
+    """Failed or stopped tests, oldest first, as dicts with time, x/y px,
+    angle, colour, nearest_px, result and ``fixed``: True when a later
+    example or successful test lies within ``fixed_px`` of it."""
+    out = []
+    for i, t in enumerate(tests):
+        if t.get("result") not in ("fail", "stopped"):
+            continue
+        r = t["reading"]
+        x, y = r["u"] * 640.0, r["v"] * 640.0
+        later = [(e["u"], e["v"]) for e in examples if e.get("time", "") > t["time"]]
+        later += [(o["reading"]["u"], o["reading"]["v"]) for o in tests[i + 1:] if o.get("result") == "ok"]
+        out.append({
+            "time": t["time"], "x": x, "y": y, "angle": r["angle"], "color": r.get("color"),
+            "nearest_px": t.get("guess", {}).get("nearest_px"), "result": t["result"],
+            "fixed": any(math.hypot(u * 640.0 - x, v * 640.0 - y) <= fixed_px for u, v in later),
+        })
+    return out
+
+
+def review_text(examples, tests):
+    """The suspect examples and misses as printable lines."""
+    lines = []
+    suspects = suspect_examples(examples)
+    if suspects:
+        lines.append(f"Examples worth checking ({len(suspects)} of {len(examples)}), worst first:")
+        for s in suspects:
+            lines.append("  #{:<3d} at ({:.0f}, {:.0f}) px  {}  [{}]".format(
+                s["index"] + 1, s["x"], s["y"], "; ".join(s["reasons"]), s["kind"]))
+    else:
+        lines.append(f"All {len(examples)} examples agree with their neighbours.")
+    missed = misses(tests, examples)
+    if missed:
+        open_ = [m for m in missed if not m["fixed"]]
+        lines.append(f"Misses: {len(missed)}, {len(open_)} with no example or good test near them since:")
+        for m in missed:
+            lines.append("  {} at ({:.0f}, {:.0f}) px, angle {:.0f}, {}{}".format(
+                m["result"], m["x"], m["y"], m["angle"], m["time"],
+                "  (fixed since)" if m["fixed"] else "  <- teach here"))
+    else:
+        lines.append("No misses logged.")
+    return lines
+
+
 # -- sessions on disk --------------------------------------------------------------
 
 class Session:
@@ -476,6 +579,17 @@ class Session:
             for e in examples[:-1]:
                 handle.write(json.dumps(e) + "\n")
         return examples[-1]
+
+    def remove_example(self, example_id):
+        """Delete one example by id; returns it, or None if not found."""
+        examples = self.examples()
+        gone = next((e for e in examples if e.get("id") == example_id), None)
+        if gone is not None:
+            with open(self.path("examples.jsonl"), "w", encoding="utf-8") as handle:
+                for e in examples:
+                    if e is not gone:
+                        handle.write(json.dumps(e) + "\n")
+        return gone
 
     def log_test(self, record):
         _append_jsonl(self.path("tests.jsonl"), record)
@@ -584,3 +698,17 @@ def camera_moved(check, shift_px=8.0, scale=0.02, rotation_deg=1.5):
     """True when ``compare_to_reference`` says the view changed enough to matter."""
     return (check is None or check["shift_px"] > shift_px
             or abs(check["scale"] - 1.0) > scale or abs(check["rotation_deg"]) > rotation_deg)
+
+
+def main(argv=None):
+    """``python3 -m unoq_braccio_driver.pick_learning <session>``: print the review."""
+    import sys
+
+    args = sys.argv[1:] if argv is None else argv
+    session = Session(args[0] if args else "default")
+    print(f"Session '{session.name}' in {session.dir}")
+    print("\n".join(review_text(session.examples(), session.tests())))
+
+
+if __name__ == "__main__":
+    main()

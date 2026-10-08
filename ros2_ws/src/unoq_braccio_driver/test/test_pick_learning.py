@@ -92,6 +92,32 @@ def test_session_saves_and_reloads_models():
         assert session.load_model("model_9999") is None
 
 
+def test_review_finds_odd_posture_and_open_misses():
+    examples = _examples(20)
+    for i, e in enumerate(examples):
+        e["id"], e["time"] = f"e{i}", f"2026-01-01 00:00:{i:02d}"
+    examples[7]["grab"][1] += 40  # a very different shoulder for the same spot
+    suspects = pl.suspect_examples(examples)
+    assert suspects and suspects[0]["index"] == 7 and suspects[0]["joint"] == "shoulder"
+    assert all(s["index"] == 7 for s in suspects)
+
+    def test(u, v, result, second):
+        return {"time": f"2026-01-01 00:01:{second:02d}", "result": result,
+                "reading": {"u": u, "v": v, "angle": 0.0}, "guess": {"nearest_px": 5.0}}
+    tests = [test(0.3, 0.2, "fail", 0), test(0.3, 0.2, "ok", 1), test(0.7, 0.4, "stopped", 2)]
+    missed = pl.misses(tests, examples)
+    assert [m["fixed"] for m in missed] == [True, False]
+
+    with tempfile.TemporaryDirectory() as root:
+        session = pl.Session("desk", root=root)
+        for e in examples:
+            session.add_example(e)
+        assert session.remove_example("e7")["id"] == "e7"
+        assert session.remove_example("e7") is None
+        assert len(session.examples()) == 19
+        assert pl.suspect_examples(session.examples()) == []
+
+
 def _picture(cubes, shape=(360, 640)):
     """RGB picture: grey table with yellow squares at (x, y, size, angle)."""
     import cv2
