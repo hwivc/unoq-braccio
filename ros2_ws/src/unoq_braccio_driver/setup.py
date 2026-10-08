@@ -6,6 +6,7 @@ setup(
     name=package_name,
     version="0.1.0",
     packages=[package_name],
+    package_data={package_name: ["web/*.html", "web/*.css", "web/*.js", "web/*.svg", "web/vendor/*"]},
     data_files=[
         ("share/ament_index/resource_index/packages", [f"resource/{package_name}"]),
         (f"share/{package_name}", ["package.xml"]),
@@ -14,7 +15,7 @@ setup(
     zip_safe=True,
     maintainer="Eoin Jordan",
     maintainer_email="eoin@example.com",
-    description="USB serial, TCP, and pose helpers for UNO Q Braccio.",
+    description="Arduino UNO serial bridge, vision, teaching and web dashboard for the Braccio.",
     license="MIT",
     entry_points={
         "console_scripts": [
@@ -46,6 +47,7 @@ setup(
             "gui_to_joint_command = unoq_braccio_driver.gui_to_joint_command:main",
             "teach_pick = unoq_braccio_driver.teach_pick:main",
             "learned_pick_demo = unoq_braccio_driver.learned_pick_demo:main",
+            "web_dashboard = unoq_braccio_driver.web_dashboard:main",
         ],
     },
 )

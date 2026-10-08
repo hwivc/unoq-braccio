@@ -50,8 +50,8 @@ Flash the UNO Q:
 arduino-cli lib install Braccio
 arduino-cli core install arduino:zephyr
 arduino-cli board list
-arduino-cli compile --fqbn arduino:zephyr:unoq firmware/unoq_braccio_firmware
-arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:zephyr:unoq firmware/unoq_braccio_firmware
+arduino-cli compile --fqbn arduino:zephyr:unoq legacy/uno_q/firmware/unoq_braccio_firmware
+arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:zephyr:unoq legacy/uno_q/firmware/unoq_braccio_firmware
 ```
 
 Run hardware:
@@ -63,7 +63,7 @@ ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/ttyACM0
 
 Run hardware remotely over the network:
 
-1. Install and start `app_lab/braccio_remote_agent` on the UNO Q with App Lab.
+1. Install and start `legacy/uno_q/app_lab/braccio_remote_agent` on the UNO Q with App Lab.
 2. Find the UNO Q IP address in App Lab or over SSH with `ip addr show`.
 3. Run:
 
@@ -132,8 +132,8 @@ Install Arduino CLI for Windows, then use PowerShell from the repo root:
 arduino-cli lib install Braccio
 arduino-cli core install arduino:zephyr
 arduino-cli board list
-arduino-cli compile --fqbn arduino:zephyr:unoq .\firmware\unoq_braccio_firmware
-arduino-cli upload -p COM3 --fqbn arduino:zephyr:unoq .\firmware\unoq_braccio_firmware
+arduino-cli compile --fqbn arduino:zephyr:unoq .\legacy\uno_q\firmware\unoq_braccio_firmware
+arduino-cli upload -p COM3 --fqbn arduino:zephyr:unoq .\legacy\uno_q\firmware\unoq_braccio_firmware
 ```
 
 Replace `COM3` with the port shown by `arduino-cli board list`.
@@ -195,7 +195,7 @@ upload path for this project:
 
 ```powershell
 arduino-cli board list
-arduino-cli upload -p 192.168.1.64 --fqbn arduino:zephyr:unoq .\firmware\unoq_braccio_firmware --upload-field password=arduino123
+arduino-cli upload -p 192.168.1.64 --fqbn arduino:zephyr:unoq .\legacy\uno_q\firmware\unoq_braccio_firmware --upload-field password=arduino123
 ```
 
 Expected successful upload output includes OpenOCD messages and ends with:
@@ -210,7 +210,7 @@ upload password. If the command asks for upload credentials, rerun it with the
 App Lab or UNO Q upload password:
 
 ```powershell
-arduino-cli upload -p 192.168.1.64 --fqbn arduino:zephyr:unoq .\firmware\unoq_braccio_firmware --upload-field password=<UPLOAD_PASSWORD>
+arduino-cli upload -p 192.168.1.64 --fqbn arduino:zephyr:unoq .\legacy\uno_q\firmware\unoq_braccio_firmware --upload-field password=<UPLOAD_PASSWORD>
 ```
 
 Use `COM4` only for USB upload on Windows. Do not use `/dev/ttyACM0` from
@@ -241,7 +241,7 @@ If the board appears as `/dev/ttyUSB0`, pass that path instead.
 ### Remote hardware bridge from WSL2
 
 This is usually easier than USB forwarding on Windows. Keep the UNO Q on the
-same network as the Windows/WSL2 machine, run `app_lab/braccio_remote_agent` on
+same network as the Windows/WSL2 machine, run `legacy/uno_q/app_lab/braccio_remote_agent` on
 the UNO Q, then launch:
 
 ```bash
@@ -273,7 +273,7 @@ before involving ROS 2.
 5. Create a new app named `braccio_smoke_test`.
 6. Add the `Braccio` and `Servo` libraries in the App Lab library panel.
 7. Replace the generated files with the files in
-   `app_lab/braccio_smoke_test`.
+   `legacy/uno_q/app_lab/braccio_smoke_test`.
 8. Click App Lab's run/start button.
 
 Expected result: the arm moves to rest, waits for about two seconds, moves to a
@@ -283,7 +283,7 @@ If you prefer the App Lab CLI route after the board is configured, copy the app
 folder to the UNO Q and start it over SSH:
 
 ```powershell
-scp -r .\app_lab\braccio_smoke_test arduino@<UNO_Q_IP_ADDRESS>:~/ArduinoApps/
+scp -r .\legacy\uno_q\app_lab\braccio_smoke_test arduino@<UNO_Q_IP_ADDRESS>:~/ArduinoApps/
 ssh arduino@<UNO_Q_IP_ADDRESS>
 arduino-app-cli app start ~/ArduinoApps/braccio_smoke_test
 arduino-app-cli app logs ~/ArduinoApps/braccio_smoke_test
@@ -306,7 +306,7 @@ instead of a USB serial cable.
 4. Create a new app named `braccio_remote_agent`.
 5. Add the `Braccio`, `Servo`, and `Arduino_RouterBridge` libraries.
 6. Replace the generated files with the files in
-   `app_lab/braccio_remote_agent`.
+   `legacy/uno_q/app_lab/braccio_remote_agent`.
 7. Run the app.
 8. Find the UNO Q IP address.
 
@@ -334,8 +334,8 @@ brew install arduino-cli
 arduino-cli lib install Braccio
 arduino-cli core install arduino:zephyr
 arduino-cli board list
-arduino-cli compile --fqbn arduino:zephyr:unoq firmware/unoq_braccio_firmware
-arduino-cli upload -p /dev/cu.usbmodem1101 --fqbn arduino:zephyr:unoq firmware/unoq_braccio_firmware
+arduino-cli compile --fqbn arduino:zephyr:unoq legacy/uno_q/firmware/unoq_braccio_firmware
+arduino-cli upload -p /dev/cu.usbmodem1101 --fqbn arduino:zephyr:unoq legacy/uno_q/firmware/unoq_braccio_firmware
 ```
 
 Replace `/dev/cu.usbmodem1101` with the port shown by `arduino-cli board list`.

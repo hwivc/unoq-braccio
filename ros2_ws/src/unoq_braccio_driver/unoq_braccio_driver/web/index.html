@@ -1,0 +1,220 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#eef1f6" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0b0d12" media="(prefers-color-scheme: dark)">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Braccio</title>
+  <link rel="icon" href="/static/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="/static/icon.svg">
+  <link rel="stylesheet" href="/static/app.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <!-- Content layer: the arm in 3D, or the camera when it is enlarged. -->
+  <div id="stage" aria-label="3D view of the arm">
+    <canvas id="scene"></canvas>
+    <img id="camera-full" class="hidden" alt="Overhead camera">
+    <div id="stage-empty" class="stage-empty hidden">
+      <div class="spinner" aria-hidden="true"></div>
+      <p id="stage-empty-text">Waiting for the arm…</p>
+    </div>
+  </div>
+
+  <!-- Sign in / pairing -->
+  <main id="auth" class="auth hidden">
+    <form id="login-form" class="glass sheet auth-card" autocomplete="on">
+      <img src="/static/icon.svg" class="auth-icon" alt="">
+      <h1>Braccio</h1>
+      <p class="secondary" id="auth-sub">Sign in to watch and control the arm.</p>
+      <label class="field"><span>Name</span>
+        <input id="login-name" name="username" autocomplete="username" autocapitalize="none" required></label>
+      <label class="field"><span>Password</span>
+        <input id="login-password" name="password" type="password" autocomplete="current-password" required></label>
+      <p class="error" id="login-error" role="alert"></p>
+      <button class="btn primary large" type="submit">Sign In</button>
+      <button class="btn plain" type="button" id="show-join">Have a pairing code?</button>
+    </form>
+
+    <form id="join-form" class="glass sheet auth-card hidden" autocomplete="on">
+      <img src="/static/icon.svg" class="auth-icon" alt="">
+      <h1 id="join-title">Join Braccio</h1>
+      <p class="secondary" id="join-sub">Enter the 6-digit code you were given, then choose a name and password.</p>
+      <label class="field"><span>Pairing code</span>
+        <input id="join-code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" required></label>
+      <label class="field"><span>Name</span>
+        <input id="join-name" autocomplete="username" autocapitalize="none" required></label>
+      <label class="field"><span>Password</span>
+        <input id="join-password" type="password" minlength="8" autocomplete="new-password" required></label>
+      <p class="error" id="join-error" role="alert"></p>
+      <button class="btn primary large" type="submit">Continue</button>
+      <button class="btn plain" type="button" id="show-login">I already have an account</button>
+    </form>
+  </main>
+
+  <!-- Floating controls layer (Liquid Glass) -->
+  <div id="app" class="hidden">
+    <header class="topbar">
+      <div class="glass capsule status" id="status" role="status" aria-live="polite">
+        <span class="dot" id="status-dot"></span>
+        <span class="status-text">
+          <strong id="status-title">Connecting…</strong>
+          <span class="secondary" id="status-sub"></span>
+        </span>
+      </div>
+      <button class="glass circle" id="open-settings" aria-label="Settings and account">
+        <span id="avatar">?</span>
+      </button>
+    </header>
+
+    <button class="glass pip" id="pip" aria-label="Enlarge camera">
+      <img id="camera-pip" alt="Overhead camera">
+      <span class="pip-label" id="pip-label">Camera</span>
+    </button>
+
+    <section class="glass sheet panel" id="panel" aria-label="Controls">
+      <button class="grabber" id="grabber" aria-label="Show or hide controls"></button>
+
+      <!-- Who is in control -->
+      <div class="control-banner hidden" id="control-banner">
+        <p id="control-text"></p>
+        <button class="btn tinted" id="take-control">Take Control</button>
+      </div>
+
+      <!-- SORT -->
+      <div class="tab" id="tab-sort">
+        <div id="sort-setup">
+          <h2>Sort cubes</h2>
+          <p class="secondary small">Choose colours. The arm picks each one and keeps going until none are left.</p>
+          <div class="chips" id="color-chips" role="group" aria-label="Colours"></div>
+          <div class="row-label">Drop them</div>
+          <div class="segmented" id="drop-mode" role="radiogroup" aria-label="Where to drop">
+            <button role="radio" data-value="auto" aria-checked="true">At their spot</button>
+            <button role="radio" data-value="side" aria-checked="false">To the side</button>
+          </div>
+          <button class="btn primary large" id="start-sort">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+            <span>Start Sorting</span>
+          </button>
+          <p class="error" id="sort-error" role="alert"></p>
+        </div>
+
+        <div id="sort-running" class="hidden">
+          <h2 id="run-title">Sorting</h2>
+          <p class="secondary small" id="run-sub"></p>
+          <ol class="steps" id="steps" aria-label="Progress">
+            <li data-step="look">Look</li><li data-step="reach">Reach</li><li data-step="grip">Grip</li>
+            <li data-step="check">Check</li><li data-step="drop">Drop</li>
+          </ol>
+          <div class="placed" id="placed"></div>
+          <button class="btn destructive large" id="stop-sort">Stop Sorting</button>
+        </div>
+      </div>
+
+      <!-- MOVE -->
+      <div class="tab hidden" id="tab-move">
+        <h2>Move</h2>
+        <div class="row-label">Gripper</div>
+        <div class="segmented" id="gripper" role="group" aria-label="Gripper">
+          <button data-value="open">Open</button>
+          <button data-value="close">Close</button>
+        </div>
+        <div class="row-label">Poses</div>
+        <div class="chips" id="poses"></div>
+        <details class="disclosure" id="joints-disclosure">
+          <summary>Joints</summary>
+          <div id="joints"></div>
+        </details>
+      </div>
+    </section>
+
+    <!-- Bottom bar: tabs grouped; Stop separate, always reachable -->
+    <nav class="bottombar">
+      <div class="glass capsule tabs" role="tablist" id="tabs">
+        <span class="tab-indicator" id="tab-indicator" aria-hidden="true"></span>
+        <button role="tab" aria-selected="true" data-tab="sort">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="7" height="7" rx="1.6"/><rect x="14" y="11" width="7" height="7" rx="1.6"/><rect x="8.5" y="3" width="7" height="7" rx="1.6"/></svg>
+          <span>Sort</span></button>
+        <button role="tab" aria-selected="false" data-tab="move">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 3h-2v6h6V9l3 3-3 3v-2h-6v6h2l-3 3-3-3h2v-6H5v2l-3-3 3-3v2h6V5H9z"/></svg>
+          <span>Move</span></button>
+      </div>
+      <button class="glass circle stop" id="stop" aria-label="Stop the arm (Esc)" title="Stop (Esc)">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5"/></svg>
+      </button>
+    </nav>
+  </div>
+
+  <!-- Settings: a modal sheet over a dimming layer -->
+  <div class="dim hidden" id="settings-dim"></div>
+  <section class="glass sheet modal hidden" id="settings" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+    <header class="modal-head">
+      <h2 id="settings-title">Settings</h2>
+      <button class="btn plain" id="close-settings">Done</button>
+    </header>
+    <div class="modal-body">
+      <div class="group">
+        <div class="cell"><span>Signed in as</span><strong id="me-name"></strong></div>
+        <div class="cell"><span>Role</span><span class="secondary" id="me-role"></span></div>
+        <div class="cell"><span>Arm</span><span class="secondary" id="me-mode"></span></div>
+        <button class="cell link" id="release-control">Give Up Control</button>
+        <button class="cell link destructive-text" id="logout">Sign Out</button>
+      </div>
+
+      <div class="group-title">Appearance</div>
+      <div class="group">
+        <div class="cell"><span>Theme</span>
+          <div class="segmented small" id="theme" role="radiogroup" aria-label="Theme">
+            <button role="radio" data-value="system" aria-checked="true">Auto</button>
+            <button role="radio" data-value="light" aria-checked="false">Light</button>
+            <button role="radio" data-value="dark" aria-checked="false">Dark</button>
+          </div></div>
+        <label class="cell"><span>Reduce transparency</span><input type="checkbox" class="switch" id="solid"></label>
+      </div>
+
+      <div class="owner-only">
+        <div class="group-title">People</div>
+        <div class="group" id="people"></div>
+        <div class="group">
+          <div class="cell"><span>Invite someone as</span>
+            <div class="segmented small" id="invite-role" role="radiogroup" aria-label="Role">
+              <button role="radio" data-value="operator" aria-checked="true">Operator</button>
+              <button role="radio" data-value="viewer" aria-checked="false">Viewer</button>
+              <button role="radio" data-value="owner" aria-checked="false">Owner</button>
+            </div></div>
+          <button class="cell link" id="invite">Show Pairing Code</button>
+          <div class="code hidden" id="invite-code"></div>
+        </div>
+        <p class="footnote">Operators can control the arm, viewers can only watch, owners can also invite people and see Advanced.</p>
+
+        <details class="disclosure advanced">
+          <summary>Advanced</summary>
+          <div class="group">
+            <div class="cell"><span>Teaching session</span><select id="session"></select></div>
+            <div class="cell"><span>Model</span><select id="model"></select></div>
+            <div class="cell"><span>Drop mode</span>
+              <select id="drop-advanced">
+                <option value="">Use Sort setting</option>
+                <option value="auto">Taught pose, else side</option>
+                <option value="taught">Only colours with a taught pose</option>
+                <option value="side">Always side</option>
+              </select></div>
+            <label class="cell"><span>Camera shows detections</span><input type="checkbox" class="switch" id="detections"></label>
+          </div>
+          <div class="group-title">Examples review</div>
+          <div class="group"><pre class="mono" id="review">Choose a session.</pre></div>
+          <div class="group-title">Activity</div>
+          <div class="group"><pre class="mono" id="log"></pre></div>
+          <div class="group-title">Servo values</div>
+          <div class="group"><pre class="mono" id="raw"></pre></div>
+        </details>
+      </div>
+    </div>
+  </section>
+
+  <div class="toast hidden" id="toast" role="alert"></div>
+</body>
+</html>

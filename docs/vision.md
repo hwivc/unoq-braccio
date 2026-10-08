@@ -116,7 +116,7 @@ Use this when the USB camera is plugged into the UNO Q, but ROS 2 is running on
 your PC.
 
 1. Plug the USB camera into the UNO Q.
-2. In Arduino App Lab, run `app_lab/usb_camera_streamer` on the UNO Q.
+2. In Arduino App Lab, run `legacy/uno_q/app_lab/usb_camera_streamer` on the UNO Q.
 3. Open this URL in a browser:
 
 ```text
@@ -173,7 +173,7 @@ ros2 launch unoq_braccio_bringup vision_usb.launch.py camera_index:=0 label:=obj
 ```
 
 Use this route when you want the ROS 2 host to own the camera. Use
-`app_lab/usb_camera_streamer` when the UNO Q owns the camera.
+`legacy/uno_q/app_lab/usb_camera_streamer` when the UNO Q owns the camera.
 
 ## Gripper-Mounted Camera Alignment
 

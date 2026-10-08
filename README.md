@@ -16,7 +16,7 @@ calibration is needed. In **Gazebo simulation** it uses inverse kinematics.
 
 **Contents:** [Build](#build) · [Simulation](#simulation) ·
 [Real arm](#real-arm-arduino-uno) · [Teach it to pick](#teach-the-real-arm-to-pick) ·
-[Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
+[Web dashboard](#web-dashboard) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
 [Troubleshooting](#troubleshooting) · [Layout](#repository-layout) ·
 [Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
 
@@ -198,10 +198,78 @@ model; `unsure_px:=60` how far from examples it still tries. Each pick is
 checked with the camera; a cube is tried twice before it is left. Ctrl+C
 freezes the arm. Watch it with `ros2 topic echo /task/state`.
 
+### Live demo: copy and paste
+
+Terminal 1, the arm and camera (keep it running; `web:=true` also starts the
+[web dashboard](#web-dashboard)):
+
+```bash
+ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
+  camera:=http://192.168.1.192:8080/video web:=true
+```
+
+Terminal 2. Add a colour first if it is new (one cube under the camera, `s`,
+then `n`; restart terminal 1 afterwards):
+
+```bash
+ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=colors
+```
+
+Pick only one colour (here red) out of the others, dropping at the far end of
+the `l` key:
+
+```bash
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=new colors:=red drop:=side
+```
+
+Pick every colour, continuously until none are left, all dropped at the `l` end:
+
+```bash
+ros2 launch unoq_braccio_bringup learned_pick_place.launch.py session:=new drop:=side
+```
+
+Use your session name (`new` here) and the colour names `real_setup` printed.
+Only cubes within 60 px of taught examples are picked, and the side drops all
+land in one spot, so keep it clear.
+
 Before kNN, the real arm used a measured camera and inverse kinematics
 (`real_setup` with all steps, then `real_pick_place.launch.py`). That still
 works and is described in [docs/camera.md](docs/camera.md), but it needs
 careful calibration and missed more often.
+
+## Web dashboard
+
+Watch and control the arm from any phone, tablet or computer on the same
+network: a live 3D model of the arm (the same URDF and transforms RViz uses),
+the overhead camera, what the arm is doing, and the controls. It works with
+the real arm and with the simulation.
+
+```bash
+ros2 launch unoq_braccio_bringup real.launch.py ... web:=true   # with the real arm
+ros2 launch unoq_braccio_bringup sim.launch.py web:=true        # with Gazebo
+ros2 run unoq_braccio_driver web_dashboard                      # or on its own, next to either
+```
+
+The terminal prints the address (e.g. `http://192.168.1.31:8000`) and, the
+first time, a **pairing code**: open the address, enter the code and choose a
+name and password. That makes you the owner. Invite others in Settings →
+**Show Pairing Code**: each code works once, for 10 minutes, as an
+**operator** (can control), **viewer** (can only watch) or **owner** (can also
+invite people and see Advanced).
+
+| Where | What |
+|---|---|
+| Sort | Pick colours (or All), drop at their spot or to the side, Start. Shows each step live and the cubes placed |
+| Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
+| Stop (red, bottom right) | Stops the task and holds the arm where it is. Always there; `Esc` on a keyboard |
+| Camera (top right) | Tap to swap with the 3D view |
+| Settings | Account, theme, Reduce Transparency, people; Advanced: teaching session, model, drop mode, examples review, activity log, raw servo values |
+
+Only one person drives at a time; others see who is in control and can take
+over. Drag to orbit the 3D view, pinch or scroll to zoom, double-click to reset.
+Accounts are in `~/.ros/braccio_web.yaml` (salted password hashes; delete an
+entry to remove someone). Options: `-p port:=8000`, and
+`-p certfile:=... -p keyfile:=...` for HTTPS if the network is not trusted.
 
 ## Move the arm
 
@@ -276,7 +344,8 @@ ros2_ws/src/unoq_braccio_bringup/ Launch files
 scripts/                         Flashing and setup scripts
 docs/                            Hardware, vision, roadmap and other guides
 edge_impulse/, test/             Edge Impulse integration and the cube model test tool
-app_lab/, web_app/               Arduino UNO Q apps and browser dashboard (alternative set-up)
+ros2_ws/src/unoq_braccio_driver/unoq_braccio_driver/web/  Web dashboard page (three.js vendored, works offline)
+legacy/uno_q/                    Earlier Arduino UNO Q set-up: App Lab apps, old web app, UNO Q firmware
 ```
 
 ## More documentation
@@ -292,7 +361,7 @@ app_lab/, web_app/               Arduino UNO Q apps and browser dashboard (alter
 | Camera vision | [docs/vision.md](docs/vision.md) |
 | Edge Impulse integration, data capture | [edge_impulse/README.md](edge_impulse/README.md), [edge_impulse/data_capture.md](edge_impulse/data_capture.md) |
 | Roadmap: tutorial plan, new sim features | [docs/roadmap.md](docs/roadmap.md) |
-| Arduino UNO Q set-up (network, App Lab, web dashboard) | [docs/architecture.md](docs/architecture.md), [web_app/README.md](web_app/README.md) |
+| Earlier Arduino UNO Q set-up (App Lab, old web app) | [legacy/uno_q/README.md](legacy/uno_q/README.md) |
 | Two-arm system plan | [docs/two_arm_braccio_system_architecture.md](docs/two_arm_braccio_system_architecture.md) |
 
 ## Credits

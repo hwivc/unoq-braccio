@@ -8,7 +8,7 @@ This document reflects the current repo implementation.
 ROS 2 host (Linux PC / Raspberry Pi 5)
   -> hardware.launch.py
   -> unoq_braccio_driver serial_bridge
-  -> USB serial, 115200 baud, text protocol (docs/hardware.md)
+  -> USB serial, 115200 baud, text protocol (../../docs/hardware.md)
   -> Arduino UNO running firmware/braccio_uno_firmware
   -> Servo pins on Braccio shield
 ```

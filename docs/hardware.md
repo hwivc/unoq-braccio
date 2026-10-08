@@ -154,6 +154,6 @@ gripping at `95` and go towards `110` only if needed.
 ## Arduino UNO Q (alternative)
 
 The older UNO Q set-up is still in the repository: the App Lab apps in
-`app_lab/` over the network (`remote.launch.py`), and
-`firmware/unoq_braccio_firmware`. See [architecture.md](architecture.md) and
+`legacy/uno_q/app_lab/` over the network (`remote.launch.py`), and
+`legacy/uno_q/firmware/unoq_braccio_firmware`. See [legacy/uno_q/architecture.md](../legacy/uno_q/architecture.md) and
 [platform-setup.md](platform-setup.md).

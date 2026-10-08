@@ -9,8 +9,8 @@ stream URL (Android "IP Webcam": http://<phone-ip>:8080/video).
 
 Starts: the serial bridge to the UNO (always USB), the overhead camera, the
 cube detector, and RViz. The camera's measured height and position, and the
-cube size, come from config/real_camera.yaml (docs/camera.md). Then run the
-task with real_pick_place.launch.py.
+cube size, come from config/real_camera.yaml (docs/camera.md). ``web:=true``
+also starts the web dashboard (http://<this-computer>:8000).
 """
 
 import os
@@ -55,6 +55,9 @@ def generate_launch_description():
         DeclareLaunchArgument("model_path", default_value=""),
         DeclareLaunchArgument("model_conf", default_value="0.3"),
         DeclareLaunchArgument("rviz", default_value="true"),
+        DeclareLaunchArgument("web", default_value="false",
+                              description="Also start the web dashboard (port web_port)."),
+        DeclareLaunchArgument("web_port", default_value="8000"),
     ]
 
     hardware = IncludeLaunchDescription(
@@ -133,7 +136,16 @@ def generate_launch_description():
         output="screen",
     )
 
+    web = Node(
+        package="unoq_braccio_driver",
+        executable="web_dashboard",
+        name="web_dashboard",
+        parameters=[{"port": ParameterValue(arg("web_port"), value_type=int), "mode": "real"}],
+        condition=IfCondition(arg("web")),
+        output="screen",
+    )
+
     return LaunchDescription(
         args + [hardware, overhead_camera, OpaqueFunction(function=cube_detector),
-                gripper_camera, gripper_detector, markers]
+                gripper_camera, gripper_detector, markers, web]
     )
