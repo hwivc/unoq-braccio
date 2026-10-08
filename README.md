@@ -135,7 +135,7 @@ Restart terminal 1 after adding colours.
 **4. Record examples** (terminal 2):
 
 ```bash
-ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=desk
+ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=new
 ```
 
 For each example, put ONE cube down and press Enter. The camera reads it, then:
