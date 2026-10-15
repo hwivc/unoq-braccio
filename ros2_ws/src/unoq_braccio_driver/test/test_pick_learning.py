@@ -145,6 +145,16 @@ def test_ignores_cut_off_and_tiny_blobs():
     assert pl.detect_cubes(_picture([(5, 180, 50, 0), (300, 100, 4, 0)]), YELLOW) == []
 
 
+def test_says_why_a_blob_is_not_a_cube():
+    rejected = []
+    found = pl.detect_cubes(_picture([(5, 180, 50, 0), (320, 180, 160, 0), (500, 100, 40, 0)]),
+                            YELLOW, rejected=rejected)
+    assert len(found) == 1                                   # only the normal-sized cube
+    reasons = sorted(r["reason"] for r in rejected)
+    assert reasons == ["cut off by the edge", "too big"], reasons
+    assert all(r["color"] == "yellow" and len(r["box"]) == 4 for r in rejected)
+
+
 def test_summarise_needs_one_steady_cube():
     one = pl.detect_cubes(_picture([(320, 180, 50, 0)]), YELLOW)
     two = pl.detect_cubes(_picture([(200, 180, 50, 0), (400, 180, 50, 0)]), YELLOW)

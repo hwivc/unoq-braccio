@@ -14,6 +14,21 @@ Check `http://<phone-ip>:8080/video` opens in a browser on the ROS machine.
 
 **USB webcam:** use its index, `camera:=0` (`ls /dev/video*` lists them).
 
+**Grove Vision AI V2** (with its Raspberry Pi camera, SSCMA firmware): used
+as a plain camera over USB serial, no model on the board. Install its driver
+once, then give its serial port (not the UNO's):
+
+```bash
+pip install --break-system-packages -e ~/ROS--2-Ten-Months-Challenge/test_camera
+ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio camera:=grove:/dev/grove_vision
+```
+
+`camera:=grove` alone finds the board when it is the only one plugged in.
+`grove_resolution:=2` (640x480, default) suits detection; `0` (240x240) is
+faster but coarse. Expect a lower frame rate than a webcam, so hold cubes
+still while `teach_pick` reads them. A new camera means a new teaching
+session (`session:=grove` or similar).
+
 Mount it:
 
 - **Looking straight down** at the table (phone held level).
@@ -85,7 +100,8 @@ over where the misses happen. Redo it whenever the camera or the arm moves.
 | Option | Default | Meaning |
 |---|---|---|
 | `serial_port` | `/dev/ttyACM0` | Arduino UNO USB port (`/dev/braccio` after `bash scripts/setup_uno_serial.sh`) |
-| `camera` | `0` | Overhead camera: USB index, `/dev/videoN`, or stream URL |
+| `camera` | `0` | Overhead camera: USB index, `/dev/videoN`, stream URL, or `grove[:<port>]` |
+| `grove_resolution` | `2` | Grove Vision AI V2: `0` 240x240, `1` 480x480, `2` 640x480 |
 | `camera_config` / `workspace_config` | `~/.ros/braccio_setup.yaml` | Written by `real_setup` |
 | `gripper_camera` | `false` | `true` to use a camera on the gripper |
 | `gripper_camera_source` | `1` | Gripper camera: USB index, `/dev/videoN`, or stream URL |

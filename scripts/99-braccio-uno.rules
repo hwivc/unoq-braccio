@@ -14,3 +14,7 @@ SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="0069", SYMLINK+="b
 SUBSYSTEM=="tty", ATTRS{idVendor}=="2341", ATTRS{idProduct}=="1002", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
 # UNO clones with a CH340 USB chip
 SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="7523", SYMLINK+="braccio", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"
+
+# Grove Vision AI V2 (overhead camera; WCH CH343 bridge): /dev/grove_vision.
+# Not the Braccio, so no braccio symlink; ModemManager kept off it too.
+SUBSYSTEM=="tty", ATTRS{idVendor}=="1a86", ATTRS{idProduct}=="55d3", SYMLINK+="grove_vision", MODE="0666", ENV{ID_MM_DEVICE_IGNORE}="1"

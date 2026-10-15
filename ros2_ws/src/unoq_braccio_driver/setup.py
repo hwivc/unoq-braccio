@@ -47,6 +47,7 @@ setup(
             "gui_to_joint_command = unoq_braccio_driver.gui_to_joint_command:main",
             "teach_pick = unoq_braccio_driver.teach_pick:main",
             "learned_pick_demo = unoq_braccio_driver.learned_pick_demo:main",
+            "exhibition_demo = unoq_braccio_driver.exhibition_demo:main",
             "web_dashboard = unoq_braccio_driver.web_dashboard:main",
         ],
     },

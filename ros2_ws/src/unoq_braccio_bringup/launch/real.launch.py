@@ -3,9 +3,11 @@
     ros2 launch unoq_braccio_bringup real.launch.py camera:=http://192.168.1.192:8080/video
     ros2 launch unoq_braccio_bringup real.launch.py camera:=0 serial_port:=/dev/braccio
     ros2 launch unoq_braccio_bringup real.launch.py camera:=0 gripper_camera:=true gripper_camera_source:=1
+    ros2 launch unoq_braccio_bringup real.launch.py camera:=grove:/dev/grove_vision serial_port:=/dev/braccio
 
-``camera`` / ``gripper_camera_source``: a USB index ("0"), a device path, or a
-stream URL (Android "IP Webcam": http://<phone-ip>:8080/video).
+``camera`` / ``gripper_camera_source``: a USB index ("0"), a device path, a
+stream URL (Android "IP Webcam": http://<phone-ip>:8080/video), or
+``grove[:<serial port>]`` for a Grove Vision AI V2 (see camera_node).
 
 Starts: the serial bridge to the UNO (always USB), the overhead camera, the
 cube detector, and RViz. The camera's measured height and position, and the
@@ -33,11 +35,15 @@ def generate_launch_description():
 
     args = [
         DeclareLaunchArgument("serial_port", default_value="/dev/ttyACM0",
-                              description="Arduino UNO USB serial port (/dev/braccio after setup)."),
+                              description="Arduino UNO USB serial port (/dev/braccio after setup), "
+                                          "or auto to find it by USB id."),
         DeclareLaunchArgument("speed", default_value="60",
                               description="Arm speed, degrees per second of the fastest joint."),
         DeclareLaunchArgument("camera", default_value="0",
-                              description="Overhead camera: USB index, /dev/videoN, or stream URL."),
+                              description="Overhead camera: USB index, /dev/videoN, stream URL, "
+                                          "or grove[:<serial port>] for a Grove Vision AI V2."),
+        DeclareLaunchArgument("grove_resolution", default_value="2",
+                              description="Grove Vision AI V2: 0 = 240x240, 1 = 480x480, 2 = 640x480."),
         DeclareLaunchArgument("camera_width", default_value="640",
                               description="Resize camera frames to this width (0 = as is)."),
         DeclareLaunchArgument("gripper_camera", default_value="false",
@@ -78,6 +84,8 @@ def generate_launch_description():
             "topic": "/vision/overhead/image_raw",
             "frame_id": "overhead_camera",
             "width": ParameterValue(arg("camera_width"), value_type=int),
+            "grove_resolution": ParameterValue(arg("grove_resolution"), value_type=int),
+            "use_device_choices": True,     # Settings > Devices on the web page can switch it
         }],
         output="screen",
     )

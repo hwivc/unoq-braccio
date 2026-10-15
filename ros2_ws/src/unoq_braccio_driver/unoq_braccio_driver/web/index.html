@@ -17,12 +17,29 @@
   <!-- Content layer: the arm in 3D, or the camera when it is enlarged. -->
   <div id="stage" aria-label="3D view of the arm">
     <canvas id="scene"></canvas>
-    <img id="camera-full" class="hidden" alt="Overhead camera">
+    <div class="cam-frame full hidden" id="frame-full">
+      <img id="camera-full" alt="Overhead camera">
+      <canvas class="overlay" id="overlay-full"></canvas>
+    </div>
     <div id="stage-empty" class="stage-empty hidden">
       <div class="spinner" aria-hidden="true"></div>
       <p id="stage-empty-text">Waiting for the arm…</p>
     </div>
   </div>
+  <canvas id="confetti" aria-hidden="true"></canvas>
+
+  <!-- Big screen (/show): what the arm is doing, for visitors -->
+  <section class="kiosk-hud hidden" id="kiosk-hud" aria-live="polite">
+    <div class="kiosk-brand"><img src="/static/icon.svg" alt=""><span>Braccio <em>learns to pick</em></span></div>
+    <div class="kiosk-now" id="kiosk-now">Getting ready…</div>
+    <div class="kiosk-attention hidden" id="kiosk-attention"></div>
+    <div class="kiosk-stats">
+      <div><strong id="kiosk-moved">0</strong><span>cubes moved</span></div>
+      <div><strong id="kiosk-rate">–</strong><span>picked first time</span></div>
+      <div><strong id="kiosk-time">–</strong><span>running</span></div>
+    </div>
+    <div class="kiosk-join" id="kiosk-join"></div>
+  </section>
 
   <!-- Sign in / pairing -->
   <main id="auth" class="auth hidden">
@@ -65,15 +82,60 @@
           <span class="secondary" id="status-sub"></span>
         </span>
       </div>
-      <button class="glass circle" id="open-settings" aria-label="Settings and account">
-        <span id="avatar">?</span>
-      </button>
+      <div class="topbar-right">
+        <button class="glass circle term-toggle" id="toggle-term" aria-label="Show or hide the live log" aria-pressed="true">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6.5 9.5 12 4 17.5l1.4 1.4L12.3 12 5.4 5.1zM12 17h8v2h-8z"/></svg>
+        </button>
+        <button class="glass circle" id="open-settings" aria-label="Settings and account">
+          <span id="avatar">?</span>
+        </button>
+      </div>
     </header>
 
-    <button class="glass pip" id="pip" aria-label="Enlarge camera">
-      <img id="camera-pip" alt="Overhead camera">
+    <!-- Camera picture-in-picture: tap to swap with the 3D view; size, boxes and picture tools. -->
+    <div class="glass pip" id="pip">
+      <div class="cam-frame" id="frame-pip" role="button" tabindex="0" aria-label="Enlarge camera">
+        <img id="camera-pip" alt="Overhead camera">
+        <canvas class="overlay" id="overlay-pip"></canvas>
+      </div>
       <span class="pip-label" id="pip-label">Camera</span>
-    </button>
+      <span class="pip-count hidden" id="pip-count"></span>
+      <div class="pip-tools">
+        <button id="cam-smaller" aria-label="Smaller camera" title="Smaller">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 11h14v2H5z"/></svg></button>
+        <button id="cam-bigger" aria-label="Bigger camera" title="Bigger">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6z"/></svg></button>
+        <button id="cam-boxes" aria-pressed="true" aria-label="Show the cubes it sees" title="Cube boxes">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3h6v2H5v4H3zm12 0h6v6h-2V5h-4zM3 15h2v4h4v2H3zm16 0h2v6h-6v-2h4z"/></svg></button>
+        <button id="cam-mask" aria-pressed="false" aria-label="Show the colour mask: every pixel of each saved colour" title="Colour mask">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2.5S5.5 9.6 5.5 14a6.5 6.5 0 0 0 13 0C18.5 9.6 12 2.5 12 2.5zm0 17a5 5 0 0 1-5-5h2a3 3 0 0 0 3 3z"/></svg></button>
+        <button id="cam-adjust" aria-expanded="false" aria-label="Adjust the picture" title="Adjust">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h9.2a3 3 0 0 1 5.6 0H20v2h-1.2a3 3 0 0 1-5.6 0H4zm12 1a1 1 0 1 0 0 .01zM4 15h1.2a3 3 0 0 1 5.6 0H20v2h-9.2a3 3 0 0 1-5.6 0H4zm4 1a1 1 0 1 0 0 .01z"/></svg></button>
+      </div>
+    </div>
+    <div class="glass sheet cam-adjust hidden" id="cam-panel" role="dialog" aria-label="Adjust the camera picture">
+      <div class="adjust-row"><label for="adj-zoom">Zoom</label><input type="range" id="adj-zoom" min="100" max="300" step="5" value="100"><output id="adj-zoom-out">1.0×</output></div>
+      <div class="adjust-row"><label for="adj-bright">Brightness</label><input type="range" id="adj-bright" min="50" max="180" step="5" value="100"><output id="adj-bright-out">100%</output></div>
+      <div class="adjust-row"><label for="adj-contrast">Contrast</label><input type="range" id="adj-contrast" min="50" max="200" step="5" value="100"><output id="adj-contrast-out">100%</output></div>
+      <div class="adjust-buttons">
+        <button class="btn tinted small-btn" id="adj-rotate">Rotate 180°</button>
+        <button class="btn tinted small-btn" id="adj-mirror">Mirror</button>
+        <button class="btn plain small-btn" id="adj-reset">Reset</button>
+      </div>
+    </div>
+
+    <!-- Live log: every ROS node, green on black -->
+    <section class="terminal" id="terminal" aria-label="Live log">
+      <header class="term-head">
+        <span class="term-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="term-title">braccio@ros2:~$ tail -f /rosout</span>
+        <span class="term-live"><span class="term-led"></span>LIVE</span>
+        <button class="term-btn" id="term-size" aria-label="Taller log" title="Taller / shorter">⇕</button>
+        <button class="term-btn" id="term-close" aria-label="Hide the live log" title="Hide">✕</button>
+      </header>
+      <div class="term-body" id="term-body" role="log" aria-live="off"></div>
+      <button class="term-jump hidden" id="term-jump">↓ new lines</button>
+    </section>
 
     <section class="glass sheet panel" id="panel" aria-label="Controls">
       <button class="grabber" id="grabber" aria-label="Show or hide controls"></button>
@@ -88,13 +150,34 @@
       <div class="tab" id="tab-sort">
         <div id="sort-setup">
           <h2>Sort cubes</h2>
-          <p class="secondary small">Choose colours. The arm picks each one and keeps going until none are left.</p>
+          <div class="row-label">On the table <span class="live-pill"><span class="term-led"></span>live</span></div>
+          <div class="table-cubes" id="table-cubes"></div>
+
+          <div class="row-label row-label-actions">
+            <span>Colours to sort</span>
+            <button class="btn plain small-btn" id="edit-colors" aria-pressed="false">Edit</button>
+          </div>
           <div class="chips" id="color-chips" role="group" aria-label="Colours"></div>
+
+          <div class="add-color hidden" id="add-color">
+            <div class="add-preview">
+              <span class="swatch big" id="add-swatch"></span>
+              <div class="add-text"><strong id="add-seen">Looking…</strong><span class="secondary small" id="add-why">Put the cube on the table, then tap it in the camera picture.</span></div>
+            </div>
+            <label class="field compact"><span>Name</span>
+              <input id="add-name" maxlength="16" autocapitalize="none" autocomplete="off" spellcheck="false"></label>
+            <div class="row-buttons">
+              <button class="btn tinted" id="add-cancel">Cancel</button>
+              <button class="btn primary" id="add-save">Save Colour</button>
+            </div>
+          </div>
+
           <div class="row-label">Drop them</div>
           <div class="segmented" id="drop-mode" role="radiogroup" aria-label="Where to drop">
             <button role="radio" data-value="auto" aria-checked="true">At their spot</button>
             <button role="radio" data-value="side" aria-checked="false">To the side</button>
           </div>
+          <button class="model-line" id="sort-model" type="button"></button>
           <button class="btn primary large" id="start-sort">
             <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
             <span>Start Sorting</span>
@@ -103,14 +186,135 @@
         </div>
 
         <div id="sort-running" class="hidden">
-          <h2 id="run-title">Sorting</h2>
-          <p class="secondary small" id="run-sub"></p>
+          <div class="run-head">
+            <div><h2 id="run-title">Sorting</h2><p class="secondary small" id="run-sub"></p></div>
+            <div class="counter" id="sorted-count" aria-label="Cubes sorted">0</div>
+          </div>
           <ol class="steps" id="steps" aria-label="Progress">
             <li data-step="look">Look</li><li data-step="reach">Reach</li><li data-step="grip">Grip</li>
             <li data-step="check">Check</li><li data-step="drop">Drop</li>
           </ol>
           <div class="placed" id="placed"></div>
           <button class="btn destructive large" id="stop-sort">Stop Sorting</button>
+        </div>
+      </div>
+
+      <!-- TRAIN -->
+      <div class="tab hidden" id="tab-train">
+        <div id="train-setup">
+          <h2>Teach the arm</h2>
+          <p class="secondary small">Show it how to pick a cube a few dozen times. It learns from every example and gets better as you go.</p>
+          <div class="row-label">Teaching session</div>
+          <div class="select-row">
+            <select id="train-session" aria-label="Teaching session"></select>
+            <button class="btn tinted" id="new-session">New</button>
+          </div>
+          <div class="new-session hidden" id="new-session-box">
+            <label class="field compact"><span>New session name</span>
+              <input id="new-session-name" maxlength="32" autocapitalize="none" autocomplete="off" spellcheck="false" placeholder="e.g. desk"></label>
+            <p class="secondary small">Start a new session whenever the camera has moved.</p>
+          </div>
+          <div class="row-label">Model used for sorting</div>
+          <select class="wide-select" id="train-model" aria-label="Model"></select>
+          <div class="stats" id="train-stats"></div>
+          <div class="row-label">Model race <span class="secondary small">· error on examples it never saw, lower wins</span></div>
+          <div class="leaderboard" id="leaderboard"></div>
+          <button class="btn primary large" id="start-teach">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 1 9l11 6 9-4.9V17h2V9zM5 13.2v4L12 21l7-3.8v-4L12 17z"/></svg>
+            <span>Start Teaching</span>
+          </button>
+          <p class="error" id="train-error" role="alert"></p>
+        </div>
+
+        <div id="train-live" class="hidden">
+          <div class="teach-head">
+            <h2 id="teach-title">Teaching</h2>
+            <span class="pill" id="teach-session"></span>
+          </div>
+          <ol class="steps" id="teach-steps" aria-label="Example steps">
+            <li data-p="place">Place</li><li data-p="above">Above</li><li data-p="grab">Grab</li>
+            <li data-p="close">Close</li><li data-p="check">Check</li>
+          </ol>
+          <p class="teach-prompt" id="teach-prompt"></p>
+          <div class="teach-reading hidden" id="teach-reading"></div>
+          <pre class="mono teach-review hidden" id="teach-review"></pre>
+          <div class="choices" id="teach-choices"></div>
+          <div class="jog hidden" id="jog">
+            <div class="jog-head">
+              <span class="row-label flat">Drive the arm</span>
+              <div class="segmented small" id="jog-step" role="radiogroup" aria-label="Step size">
+                <button role="radio" data-value="1" aria-checked="true">1°</button>
+                <button role="radio" data-value="5" aria-checked="false">5°</button>
+              </div>
+            </div>
+            <div id="jog-rows"></div>
+          </div>
+          <div class="stats" id="teach-stats"></div>
+          <div class="leaderboard" id="teach-board"></div>
+          <button class="btn plain end-teach" id="end-teach">End Teaching</button>
+        </div>
+      </div>
+
+      <!-- SHOW: exhibition mode -->
+      <div class="tab hidden" id="tab-show">
+        <div id="show-setup">
+          <h2>Exhibition</h2>
+          <p class="secondary small">Keeps moving cubes around the table on its own, resting and doing fun moves in between.
+            It only puts cubes down where it has learned to pick, inside the base window below.</p>
+
+          <div class="row-label">Base window <span class="secondary small">· how far it may turn</span></div>
+          <div class="window-box">
+            <div class="window-readout">
+              <div><span>Left end</span><strong id="win-left">none</strong></div>
+              <div class="now"><span>Base now</span><strong id="win-now">–</strong></div>
+              <div><span>Right end</span><strong id="win-right">none</strong></div>
+            </div>
+            <div class="jog-row window-jog">
+              <span class="jog-label">Base</span>
+              <button class="jog-btn" id="win-minus" aria-label="Turn right">−</button>
+              <output class="jog-value" id="win-value">–</output>
+              <button class="jog-btn" id="win-plus" aria-label="Turn left">+</button>
+            </div>
+            <div class="row-buttons window-buttons">
+              <button class="btn tinted small-btn" id="set-left">Set Left End</button>
+              <button class="btn tinted small-btn" id="set-right">Set Right End</button>
+              <button class="btn plain small-btn" id="clear-window">Clear</button>
+            </div>
+            <p class="secondary small window-note" id="win-note"></p>
+          </div>
+
+          <div class="row-label">Rest between rounds <span class="secondary small">· lets the servos cool</span></div>
+          <div class="segmented" id="show-rest" role="radiogroup" aria-label="Rest">
+            <button role="radio" data-value="15" aria-checked="false">15 s</button>
+            <button role="radio" data-value="30" aria-checked="true">30 s</button>
+            <button role="radio" data-value="60" aria-checked="false">1 min</button>
+            <button role="radio" data-value="120" aria-checked="false">2 min</button>
+          </div>
+          <div class="row-label">Cubes moved per round</div>
+          <div class="segmented" id="show-moves" role="radiogroup" aria-label="Moves per round">
+            <button role="radio" data-value="1" aria-checked="false">1</button>
+            <button role="radio" data-value="3" aria-checked="true">3</button>
+            <button role="radio" data-value="5" aria-checked="false">5</button>
+          </div>
+          <label class="switch-row"><span>Wave, nod and dance while resting</span><input type="checkbox" class="switch" id="show-attract" checked></label>
+
+          <button class="btn primary large" id="start-show">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 5.5v13l10.5-6.5z"/></svg>
+            <span>Start Exhibition</span>
+          </button>
+          <p class="error" id="show-error" role="alert"></p>
+          <a class="btn plain big-screen-link" href="/show" target="_blank" rel="noopener">Open the big screen (/show) ↗</a>
+        </div>
+
+        <div id="show-running" class="hidden">
+          <div class="run-head">
+            <div><h2 id="show-title">Exhibition</h2><p class="secondary small" id="show-sub"></p></div>
+            <div class="counter" id="show-count" aria-label="Cubes moved">0</div>
+          </div>
+          <div class="attention hidden" id="show-attention" role="alert"></div>
+          <div class="stats" id="show-stats"></div>
+          <button class="btn destructive large" id="stop-show">Stop Exhibition</button>
+          <a class="btn plain big-screen-link" href="/show" target="_blank" rel="noopener">Open the big screen (/show) ↗</a>
         </div>
       </div>
 
@@ -138,6 +342,12 @@
         <button role="tab" aria-selected="true" data-tab="sort">
           <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="11" width="7" height="7" rx="1.6"/><rect x="14" y="11" width="7" height="7" rx="1.6"/><rect x="8.5" y="3" width="7" height="7" rx="1.6"/></svg>
           <span>Sort</span></button>
+        <button role="tab" aria-selected="false" data-tab="train">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 1 9l11 6 9-4.9V17h2V9zM5 13.2v4L12 21l7-3.8v-4L12 17z"/></svg>
+          <span>Train</span></button>
+        <button role="tab" aria-selected="false" data-tab="show">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.6 6.2 6.7.6-5.1 4.4 1.6 6.6L12 16.3l-5.8 3.5 1.6-6.6L2.7 8.8l6.7-.6z"/></svg>
+          <span>Show</span></button>
         <button role="tab" aria-selected="false" data-tab="move">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 3h-2v6h6V9l3 3-3 3v-2h-6v6h2l-3 3-3-3h2v-6H5v2l-3-3 3-3v2h6V5H9z"/></svg>
           <span>Move</span></button>
@@ -164,6 +374,16 @@
         <button class="cell link destructive-text" id="logout">Sign Out</button>
       </div>
 
+      <div class="group-title group-title-actions"><span>Devices</span><span class="secondary small" id="devices-note">found by USB id</span></div>
+      <div class="group devices" id="devices">
+        <div class="device" id="dev-arm"></div>
+        <div class="device" id="dev-camera"></div>
+      </div>
+      <details class="disclosure usb-all">
+        <summary>All USB devices</summary>
+        <div class="group" id="usb-list"></div>
+      </details>
+
       <div class="group-title">Appearance</div>
       <div class="group">
         <div class="cell"><span>Theme</span>
@@ -173,6 +393,7 @@
             <button role="radio" data-value="dark" aria-checked="false">Dark</button>
           </div></div>
         <label class="cell"><span>Reduce transparency</span><input type="checkbox" class="switch" id="solid"></label>
+        <label class="cell"><span>Celebrations</span><input type="checkbox" class="switch" id="party" checked></label>
       </div>
 
       <div class="owner-only">
@@ -193,8 +414,7 @@
         <details class="disclosure advanced">
           <summary>Advanced</summary>
           <div class="group">
-            <div class="cell"><span>Teaching session</span><select id="session"></select></div>
-            <div class="cell"><span>Model</span><select id="model"></select></div>
+            <div class="cell"><span>Review session</span><select id="session"></select></div>
             <div class="cell"><span>Drop mode</span>
               <select id="drop-advanced">
                 <option value="">Use Sort setting</option>
@@ -202,12 +422,10 @@
                 <option value="taught">Only colours with a taught pose</option>
                 <option value="side">Always side</option>
               </select></div>
-            <label class="cell"><span>Camera shows detections</span><input type="checkbox" class="switch" id="detections"></label>
+            <label class="cell"><span>Camera shows the detector's view</span><input type="checkbox" class="switch" id="detections"></label>
           </div>
           <div class="group-title">Examples review</div>
           <div class="group"><pre class="mono" id="review">Choose a session.</pre></div>
-          <div class="group-title">Activity</div>
-          <div class="group"><pre class="mono" id="log"></pre></div>
           <div class="group-title">Servo values</div>
           <div class="group"><pre class="mono" id="raw"></pre></div>
         </details>

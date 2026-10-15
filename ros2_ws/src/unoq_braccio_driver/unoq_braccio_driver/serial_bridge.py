@@ -20,12 +20,20 @@ READY banner, or a STAT reply to a probe), and the port is reopened if the
 cable is pulled. After a reset the arm is back at its start pose; the last
 command is deliberately not replayed.
 
+``serial_port:=auto`` finds the UNO by USB id (usb_devices) on every connect,
+so it does not matter which ttyACM it lands on or whether the udev rule is
+installed; it is never confused with the Grove camera. With
+``use_device_choices`` (default) the web page's Settings > Devices can pin
+the arm to a port or ask for a reconnect while this runs, and the bridge
+reports how it is doing on /braccio/devices.
+
 The firmware powers up standing straight up (braccio_model.START_POSE). Until
 the board reports its real position, /joint_states carries that start pose,
 so RViz and manual_control begin from the same upright arm instead of an
 empty or folded model.
 """
 
+import json
 import os
 import threading
 
@@ -45,12 +53,13 @@ from unoq_braccio_driver.braccio_protocol import (
     parse_status,
     speed_command,
 )
+from unoq_braccio_driver import usb_devices
 
 
 class SerialBridge(Node):
     def __init__(self) -> None:
         super().__init__("braccio_serial_bridge")
-        self.declare_parameter("serial_port", "/dev/ttyACM0")
+        self.declare_parameter("serial_port", "/dev/ttyACM0")   # or "auto": find the UNO by USB id
         self.declare_parameter("baud_rate", 115200)
         self.declare_parameter("command_topic", "/braccio/joint_command")
         self.declare_parameter("speed_deg_s", 60.0)       # fastest joint, degrees per second
@@ -65,8 +74,15 @@ class SerialBridge(Node):
         # (the arm turns the other way from the model). Commands are untouched.
         self.declare_parameter("setup_file", "~/.ros/braccio_setup.yaml")
         self.rviz_mirror = self.load_rviz_mirror(str(self.get_parameter("setup_file").value))
+        self.declare_parameter("use_device_choices", True)
+        self.declare_parameter("devices_file", usb_devices.DEVICES_FILE)
+        self.choices = (usb_devices.Choices(str(self.get_parameter("devices_file").value))
+                        if bool(self.get_parameter("use_device_choices").value) else None)
 
         self.port = str(self.get_parameter("serial_port").value)
+        self.active_choice = self.wanted()
+        self.last_choice_check = 0.0
+        self.search_note = ""          # why no port could be chosen, for the web page
         self.baud_rate = int(self.get_parameter("baud_rate").value)
 
         self.lock = threading.Lock()   # guards self.serial and writes to it
@@ -85,6 +101,8 @@ class SerialBridge(Node):
         self.drops = 0                 # port losses since the board last answered
 
         self.status_pub = self.create_publisher(String, "/braccio/firmware_status", 10)
+        self.device_pub = self.create_publisher(String, usb_devices.STATUS_TOPIC, 10)
+        self.create_timer(1.0, self.publish_device_status)
         self.joint_state_pub = self.create_publisher(JointState, "/joint_states", 10)
         self.create_subscription(
             JointState, str(self.get_parameter("command_topic").value), self.on_command, 10
@@ -107,8 +125,55 @@ class SerialBridge(Node):
                 throttle_duration_sec=2.0,
             )
 
+    # -- which port ------------------------------------------------------------
+
+    def wanted(self):
+        """(port spec, reconnect count): the web page's choice, else the serial_port parameter."""
+        spec = str(self.get_parameter("serial_port").value)
+        if self.choices is None:
+            return spec, 0
+        choices = self.choices.get()
+        return (spec if choices["arm"] == "auto" else choices["arm"]), choices["reconnect"]["arm"]
+
+    def resolve_port(self, spec):
+        """A real port for ``spec`` ("auto" = by USB id), or None with self.search_note set."""
+        if spec != "auto":
+            self.search_note = ""
+            return spec
+        port, why = usb_devices.find_arm()
+        self.search_note = why or ""
+        return port
+
+    def check_choice(self, now):
+        """Follow a new choice from the web page, or a Reconnect press (about once a second)."""
+        if self.choices is None or now - self.last_choice_check < 1.0:
+            return
+        self.last_choice_check = now
+        wanted = self.wanted()
+        if wanted == self.active_choice:
+            return
+        self.active_choice = wanted
+        self.get_logger().info(f"Arm port choice: {wanted[0]}; reconnecting")
+        self.close_port("switching to the chosen port", quiet=True)
+        self.last_open_attempt = -1e9
+
+    def publish_device_status(self) -> None:
+        if self.serial is None:
+            state, detail = "searching", self.search_note or f"Cannot open {self.port}"
+        elif not self.ready:
+            state, detail = "starting", "waiting for the arm to power up"
+        else:
+            state, detail = "ready", ""
+        self.device_pub.publish(String(data=json.dumps({
+            "device": "arm", "port": self.port if self.serial is not None else "",
+            "state": state, "detail": detail,
+            "manual": self.choices is not None and self.choices.get()["arm"] != "auto",
+            "source": self.active_choice[0],
+        })))
+
     def tick(self) -> None:
         now = time.monotonic()
+        self.check_choice(now)
         if (not self.have_status
                 and now - self.last_status_poll >= float(self.get_parameter("status_period").value)):
             # Nothing heard from the board yet: it is (re)starting into its
@@ -152,6 +217,11 @@ class SerialBridge(Node):
     # -- serial side --------------------------------------------------------
 
     def open_port(self) -> None:
+        port_name = self.resolve_port(self.active_choice[0])
+        if port_name is None:
+            self.get_logger().warning(f"{self.search_note}; retrying", throttle_duration_sec=10.0)
+            return
+        self.port = port_name
         try:
             # exclusive: a second program (or a second bridge) cannot open the
             # port while we have it, instead of both silently stealing bytes.
@@ -188,7 +258,7 @@ class SerialBridge(Node):
             + "waiting for the arm to power up (about 8 s)"
         )
 
-    def close_port(self, reason: str) -> None:
+    def close_port(self, reason: str, quiet: bool = False) -> None:
         with self.lock:
             if self.serial is None:
                 return
@@ -199,6 +269,8 @@ class SerialBridge(Node):
             self.serial = None
             self.ready = False
             self.forget_commands()
+        if quiet:
+            return
         self.drops += 1
         self.get_logger().error(f"Lost {self.port}: {reason}; reconnecting")
         if self.drops >= 2:

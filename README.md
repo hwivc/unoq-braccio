@@ -16,7 +16,7 @@ calibration is needed. In **Gazebo simulation** it uses inverse kinematics.
 
 **Contents:** [Build](#build) · [Simulation](#simulation) ·
 [Real arm](#real-arm-arduino-uno) · [Teach it to pick](#teach-the-real-arm-to-pick) ·
-[Web dashboard](#web-dashboard) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
+[Web dashboard](#web-dashboard) · [Exhibition](#exhibition-mode) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
 [Troubleshooting](#troubleshooting) · [Layout](#repository-layout) ·
 [Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
 
@@ -259,17 +259,47 @@ invite people and see Advanced).
 
 | Where | What |
 |---|---|
-| Sort | Pick colours (or All), drop at their spot or to the side, Start. Shows each step live and the cubes placed |
+| Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are. Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put one cube under the camera, name it, save (the same measurement as `real_setup`'s colours step); **Edit** removes colours |
+| Show | Exhibition mode: base window, rests, Start / Stop, counters; link to the `/show` big screen |
+| Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
 | Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
-| Stop (red, bottom right) | Stops the task and holds the arm where it is. Always there; `Esc` on a keyboard |
-| Camera (top right) | Tap to swap with the 3D view |
-| Settings | Account, theme, Reduce Transparency, people; Advanced: teaching session, model, drop mode, examples review, activity log, raw servo values |
+| Stop (red, bottom right) | Stops the task (or teaching's current move) and holds the arm where it is. Always there; `Esc` on a keyboard |
+| Camera (top right) | Tap to swap with the 3D view. Boxes and labels mark the cubes it sees (and the cube being picked). Buttons: smaller / bigger, boxes on / off, picture adjust (zoom, brightness, contrast, rotate, mirror; kept per browser) |
+| Live log (`>_`, bottom right) | Every ROS node's log (`/rosout`), live, green on black; warnings amber, errors red |
+| Settings | Account, theme, Reduce Transparency, Celebrations, people; Advanced: examples review, drop mode, raw servo values |
 
 Only one person drives at a time; others see who is in control and can take
 over. Drag to orbit the 3D view, pinch or scroll to zoom, double-click to reset.
 Accounts are in `~/.ros/braccio_web.yaml` (salted password hashes; delete an
 entry to remove someone). Options: `-p port:=8000`, and
 `-p certfile:=... -p keyfile:=...` for HTTPS if the network is not trusted.
+
+## Exhibition mode
+
+For a show: the arm keeps moving cubes around the table on its own for
+hours, rests between rounds so the servos cool down, and waves, nods or
+dances every few rests. In the web dashboard's **Show** tab:
+
+1. **Base window**: drive the base with − / + to the furthest it may turn one
+   way, **Set Left End**; the other way, **Set Right End**. The window shows
+   as a green wedge in the 3D view.
+2. Choose the rest (15 s – 2 min) and cubes moved per round, then **Start Exhibition**.
+3. Open **`http://<pi>:8000/show`** on a TV or monitor: a big screen with what
+   the arm is doing, cubes moved, success rate, the camera, the 3D arm and the
+   live log (sign in once, as a viewer).
+
+Cubes are only ever put down on **taught spots** (places where a cube really
+sat and the arm really picked it up), inside the base window, and at least two
+cube widths from any other cube, so they never land off the table or on each
+other. Teach spots across the whole area you want used (keep them away from
+the table edge), and keep the cubes inside it.
+
+It stops and shows **Needs a hand** (on the page and the big screen) when a
+cube goes missing (it carries on by itself once it sees them all again, or
+with fewer cubes after a few more looks), after 3 missed picks in a row, or
+when no free spot is left. Settings are in `~/.ros/braccio_exhibition.yaml`
+and are re-read every round. From a terminal:
+`ros2 run unoq_braccio_driver exhibition_demo --ros-args -p session:=<name>`.
 
 ## Move the arm
 

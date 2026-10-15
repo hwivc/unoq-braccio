@@ -40,13 +40,26 @@ def wrap90(angle: float) -> float:
     return (angle + 45.0) % 90.0 - 45.0
 
 
-def detect_cubes(rgb, color_ranges, min_frac=0.001, max_frac=0.06, min_fill=0.6):
+def color_mask(hsv, ranges):
+    """Pixels of an HSV image inside any of a colour's ranges (uint8 0/255)."""
+    import cv2
+
+    mask = None
+    for low, high in ranges:
+        part = cv2.inRange(hsv, np.array(low), np.array(high))
+        mask = part if mask is None else cv2.bitwise_or(mask, part)
+    return mask
+
+
+def detect_cubes(rgb, color_ranges, min_frac=0.001, max_frac=0.06, min_fill=0.6, rejected=None):
     """Cubes in one RGB frame, as dicts with u, v (fractions of the width),
     angle (degrees, wrapped), area_frac, color and box (pixels).
 
     A cube is a blob in one colour range whose area is between ``min_frac``
     and ``max_frac`` of the picture, that fills most of its rotated
-    rectangle (``min_fill``) and does not touch the picture edge.
+    rectangle (``min_fill``) and does not touch the picture edge. Pass a list
+    as ``rejected`` to also get the blobs that were not (color, box,
+    area_frac, reason), e.g. to show on screen why a cube is not seen.
     """
     import cv2
 
@@ -56,22 +69,30 @@ def detect_cubes(rgb, color_ranges, min_frac=0.001, max_frac=0.06, min_fill=0.6)
     height, width = hsv.shape[:2]
     total = float(height * width)
     cubes = []
+
+    def reject(color, box, area, reason):
+        if rejected is not None and area >= 0.0002 * total:   # not every speck of noise
+            rejected.append({"color": color, "box": list(box), "area_frac": area / total, "reason": reason})
+
     for color, ranges in color_ranges.items():
-        mask = None
-        for low, high in ranges:
-            part = cv2.inRange(hsv, np.array(low), np.array(high))
-            mask = part if mask is None else cv2.bitwise_or(mask, part)
-        mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+        mask = cv2.morphologyEx(color_mask(hsv, ranges), cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
         contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
         for contour in contours:
             area = cv2.contourArea(contour)
-            if not min_frac * total <= area <= max_frac * total:
-                continue
             x, y, w, h = cv2.boundingRect(contour)
+            box = (x, y, x + w, y + h)
+            if area < min_frac * total:
+                reject(color, box, area, "too small")
+                continue
+            if area > max_frac * total:
+                reject(color, box, area, "too big")
+                continue
             if x <= 1 or y <= 1 or x + w >= width - 1 or y + h >= height - 1:
+                reject(color, box, area, "cut off by the edge")
                 continue  # cut off by the picture edge
             (cx, cy), (rw, rh), angle = cv2.minAreaRect(contour)
             if rw * rh <= 0 or area / (rw * rh) < min_fill:
+                reject(color, box, area, "not square")
                 continue  # not a square-ish solid blob (e.g. the arm, a shadow)
             cubes.append({
                 "u": cx / width, "v": cy / width, "angle": wrap90(angle),
