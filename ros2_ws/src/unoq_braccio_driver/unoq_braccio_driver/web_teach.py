@@ -78,6 +78,7 @@ class Teacher:
             model = {k: self.model.info.get(k) for k in ("name", "chosen", "error_deg", "examples")}
         with self.lock:
             return {
+                "kind": getattr(self, "kind", "teach"),
                 "session": self.session.name, "phase": self.phase, "prompt": self.prompt,
                 "choices": list(self.choices), "examples": len(self.examples), "model": model,
                 "scores": (self.model.info.get("scores") if self.model else None) or {},

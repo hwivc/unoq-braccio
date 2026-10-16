@@ -11,7 +11,8 @@ The page shows the arm in 3D, drawn from the same URDF and transforms as
 RViz, the overhead camera with the cubes it sees, what the arm is doing, and
 a live log of every ROS node (/rosout). Whoever has the controls can sort
 cubes (learned_pick_demo on the real arm, pick_place_demo in simulation),
-teach the arm to pick (web_teach, the same sessions as teach_pick), choose
+teach the arm to pick (web_teach, the same sessions as teach_pick), collect
+many examples from one by turning the base step by step (web_collect), choose
 the model, add or remove cube colours (web_colors), move joints, open /
 close the gripper and go to poses. Anyone allowed to control can press Stop
 at any time. The Show tab runs exhibition mode (exhibition_demo: cubes
@@ -58,6 +59,7 @@ from unoq_braccio_driver.braccio_model import JOINT_LIMITS, JOINT_NAMES, POSES, 
 from unoq_braccio_driver.braccio_protocol import parse_status
 from unoq_braccio_driver.web_auth import CAN_CONTROL, ROLES, Accounts
 from unoq_braccio_driver.web_scene import urdf_scene
+from unoq_braccio_driver.web_collect import Collector
 from unoq_braccio_driver.web_teach import Teacher
 
 SESSION_NAME = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
@@ -356,7 +358,7 @@ class Dashboard(Node):
             settings["base_min"] = int(base)
         if payload.get("clear_window"):
             settings["base_min"] = settings["base_max"] = None
-        for key in ("rest_s", "moves_per_round", "attract", "max_minutes"):
+        for key in ("rest_s", "moves_per_round", "attract", "max_minutes", "patterns"):
             if key in payload:
                 settings[key] = payload[key]
         try:
@@ -593,20 +595,22 @@ class Dashboard(Node):
     def teaching(self):
         return self.teacher is not None and not self.teacher.done
 
-    def start_teaching(self, who, session):
+    def start_teaching(self, who, session, worker=Teacher):
+        """Teach (``Teacher``) or auto-collect (``Collector``) in ``session`` from the page."""
         if self.task is not None:
             return False, "Stop sorting first."
         if self.teaching():
-            return False, f"Already teaching session {self.teacher.session.name}."
+            what = "collecting in" if isinstance(self.teacher, Collector) else "teaching"
+            return False, f"Already {what} session {self.teacher.session.name}: end that first."
         if self.mode() != "real":
-            return False, "Teaching needs the real arm (real.launch.py)."
+            return False, "This needs the real arm (real.launch.py)."
         if not SESSION_NAME.match(session or ""):
             return False, "Use 1-32 letters, digits, - or _ for the session name."
-        self.teacher = Teacher(self, session, root=TEACH_ROOT,
-                               setup_file=str(self.get_parameter("setup_file").value),
-                               log=lambda line: self.add_log("teach", "INFO", line)).start()
+        self.teacher = worker(self, session, root=TEACH_ROOT,
+                              setup_file=str(self.get_parameter("setup_file").value),
+                              log=lambda line: self.add_log(worker.__name__.lower(), "INFO", line)).start()
         self.selected = {"session": session, "model": ""}
-        self.note(f"{who} started teaching session {session}")
+        self.note(f"{who} started {'auto-collect' if worker is Collector else 'teaching'} in session {session}")
         return True, "started"
 
     def select(self, session, model=""):
@@ -1089,6 +1093,15 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/teach/start":
             ok, message = node.start_teaching(name, str(payload.get("session") or "").strip())
             return self.send_json({"ok": True} if ok else {"error": message}, 200 if ok else 409)
+        if path == "/api/collect/start":
+            ok, message = node.start_teaching(name, str(payload.get("session") or "").strip(), Collector)
+            return self.send_json({"ok": True} if ok else {"error": message}, 200 if ok else 409)
+        if path == "/api/collect/settings":
+            if not node.teaching() or not isinstance(node.teacher, Collector):
+                return self.send_json({"error": "Auto-collect is not running."}, 409)
+            base_now = (node.servo or node.target or START_POSE)[0]
+            ok, message = node.teacher.update(payload, base_now)
+            return self.send_json({"ok": True} if ok else {"error": message}, 200 if ok else 400)
         if path == "/api/teach/answer":
             if not node.teaching():
                 return self.send_json({"error": "Not teaching."}, 409)

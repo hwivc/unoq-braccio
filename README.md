@@ -260,7 +260,8 @@ invite people and see Advanced).
 | Where | What |
 |---|---|
 | Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are. Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put one cube under the camera, name it, save (the same measurement as `real_setup`'s colours step); **Edit** removes colours |
-| Show | Exhibition mode: base window, rests, Start / Stop, counters; link to the `/show` big screen |
+| Collect | **Auto-collect**: teach ONE example in Train, set the base's two ends and a step (3/5/10°); the arm repeats that example at every step: puts the cube down, reads where it landed, picks it back up to check, saves it. One example fills one arc; **Sweep all** sweeps every ticked taught example in turn, so a straight line of 4–6 examples taught from the base outwards becomes a grid over the whole table. Only asks for OK to hand over or put back a lost cube. Dots on the camera show the covered spots |
+| Show | Exhibition mode: base window, playlist of patterns, rests, Start / Stop, counters; link to the `/show` big screen |
 | Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
 | Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
 | Stop (red, bottom right) | Stops the task (or teaching's current move) and holds the arm where it is. Always there; `Esc` on a keyboard |
@@ -277,8 +278,7 @@ entry to remove someone). Options: `-p port:=8000`, and
 ## Exhibition mode
 
 For a show: the arm keeps moving cubes around the table on its own for
-hours, rests between rounds so the servos cool down, and waves, nods or
-dances every few rests. In the web dashboard's **Show** tab:
+hours, making one pattern after another from a **playlist**: *line up by colour*, *circle* (the cubes on one collected arc), *colour zones*, *swap* two cubes (through a free spot) and *shuffle*. The camera shows each pattern's targets as ghost squares, the big screen narrates ("Making a circle… 2 of 3 in place"), and a finished shape gets confetti and a wave, nod or dance. It rests between rounds so the servos cool down. Patterns only use known spots (taught or auto-collected examples), placing with each spot's own pose, so a dense grid from **Collect → Sweep all** makes the neatest shapes. In the web dashboard's **Show** tab:
 
 1. **Base window**: drive the base with − / + to the furthest it may turn one
    way, **Set Left End**; the other way, **Set Right End**. The window shows

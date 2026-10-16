@@ -3,6 +3,7 @@ and puts down cubes where the learned poses say. Needs ROS 2 Python (rclpy) to i
 node, but no robot, camera or running ROS graph: ``python test_exhibition_demo.py``.
 """
 
+import json
 import math
 import os
 import sys
@@ -147,7 +148,7 @@ def test_shuffles_for_rounds_inside_the_window_without_losing_cubes():
     start = [{"u": 0.25, "v": 0.2, "color": "blue"}, {"u": 0.55, "v": 0.37, "color": "red"},
              {"u": 0.75, "v": 0.45, "color": "yellow"}]
     world = World(_model(), start)
-    settings = {"base_min": 60, "base_max": 150, "moves_per_round": 3, "attract_every": 1}
+    settings = {"base_min": 60, "base_max": 150, "moves_per_round": 3, "attract_every": 1, "patterns": ["shuffle"]}
     demo, states, _ = _demo(world, settings, rounds=3)
     try:
         demo.run()
@@ -175,7 +176,8 @@ def test_asks_for_help_when_a_cube_disappears():
     def lose_one(rests):
         if rests == 1 and world.cubes:
             world.cubes.pop()                              # a visitor took it, or it fell off
-    demo, states, currents = _demo(world, {"moves_per_round": 1, "attract": False}, rounds=3, on_round=lose_one)
+    demo, states, currents = _demo(world, {"moves_per_round": 1, "attract": False, "patterns": ["shuffle"]},
+                                   rounds=3, on_round=lose_one)
     calls = {"n": 0}
 
     def attention(why, settings):                      # stop after the first call for help
@@ -189,6 +191,28 @@ def test_asks_for_help_when_a_cube_disappears():
     except Stop:
         pass
     assert calls["n"] == 1 and "missing" in demo.current["attention"], demo.current
+
+
+def test_plays_a_line_pattern_on_known_spots():
+    if demo_module is None:
+        print("skip: no rclpy")
+        return
+    start = [{"u": 0.35, "v": 0.2, "color": "red"}, {"u": 0.55, "v": 0.45, "color": "blue"},
+             {"u": 0.75, "v": 0.3667, "color": "yellow"}]
+    world = World(_model(), start)
+    demo, states, currents = _demo(world, {"patterns": ["line"], "attract_every": 1}, rounds=1)
+    demo.unsure = 60.0
+    try:
+        demo.run()
+    except Stop:
+        pass
+    assert "PATTERN_DONE" in states, states[-10:]
+    rows = {round(c["v"], 3) for c in world.cubes}
+    assert len(rows) == 1, world.cubes                      # all on one row ...
+    order = [c["color"] for c in sorted(world.cubes, key=lambda c: c["u"])]
+    assert order == sorted(order)                           # ... left to right by colour
+    last = json.loads(currents[-1])
+    assert last["narration"].endswith("done!") and all(t[3] for t in last["targets"])
 
 
 if __name__ == "__main__":

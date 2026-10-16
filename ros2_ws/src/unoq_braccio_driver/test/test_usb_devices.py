@@ -11,6 +11,8 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 from unoq_braccio_driver import usb_devices as ud  # noqa: E402
 
+NO_LINK = "/nonexistent/braccio"   # the real /dev/braccio of this machine must not matter here
+
 UNO = SimpleNamespace(device="/dev/ttyACM1", vid=0x2341, pid=0x0043, serial_number="A1",
                       product="Arduino Uno", description="ttyACM1")
 GROVE = SimpleNamespace(device="/dev/ttyACM0", vid=0x1A86, pid=0x55D3, serial_number="5AF7",
@@ -52,11 +54,11 @@ def test_never_guesses_when_it_cannot_tell():
 
 def test_manual_choices_never_open_the_arm_as_a_camera():
     ports = ud.serial_ports([UNO, GROVE, OTHER])
-    assert ud.camera_port_problem("/dev/ttyACM1", ports).endswith("not a camera")
-    assert ud.camera_port_problem("/dev/ttyUSB1", ports) is None  # unknown board: allowed by hand
-    assert "does not exist" in ud.camera_port_problem("/dev/ttyACM9", ports)
-    assert ud.check_camera_choice("grove:/dev/ttyACM1", ports)[0] is False
-    assert ud.check_camera_choice("grove:/dev/ttyACM0", ports)[0] is True
+    assert ud.camera_port_problem("/dev/ttyACM1", ports, NO_LINK).endswith("not a camera")
+    assert ud.camera_port_problem("/dev/ttyUSB1", ports, NO_LINK) is None  # unknown board: allowed by hand
+    assert "does not exist" in ud.camera_port_problem("/dev/ttyACM9", ports, NO_LINK)
+    assert ud.check_camera_choice("grove:/dev/ttyACM1", ports, arm_link=NO_LINK)[0] is False
+    assert ud.check_camera_choice("grove:/dev/ttyACM0", ports, arm_link=NO_LINK)[0] is True
     assert ud.check_camera_choice("auto", ports)[0] is True
     assert ud.check_camera_choice("http://192.168.1.5:8080/video", ports)[0] is True
     assert ud.check_camera_choice("/dev/video0", ports, [{"port": "/dev/video0", "name": "cam"}])[0] is True

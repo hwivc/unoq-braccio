@@ -299,6 +299,7 @@ const ORDER = Object.keys(STEPS);
 
 function describe(task) {
   const c = task.current || {};
+  if (c.narration && !['ATTENTION', 'REST', 'ATTRACT'].includes(task.state)) return c.narration;
   const cube = c.cube || c.bin;
   const cubeText = cube ? `${nice(cube).toLowerCase()} cube` : 'cube';
   return ({
@@ -318,6 +319,7 @@ function describe(task) {
     REST: 'Resting (servos cooling)',
     ATTRACT: `Doing a little ${c.trick || 'dance'}`,
     ATTENTION: 'Needs a hand',
+    PATTERN_DONE: 'Pattern complete!',
     LOWER: 'Lowering',
     RELEASE: 'Letting go',
     RETREAT: 'Moving back',
@@ -350,7 +352,7 @@ async function start() {
   buildSort();
   buildTrain();
   buildMove();
-  if (!app.showWired) { wireShow(); app.showWired = true; }
+  if (!app.showWired) { wireShow(); wireCollect(); app.showWired = true; }
   buildSettings();
   initTerminal();
   applyCamera();
@@ -413,6 +415,7 @@ function onState(s) {
   renderTable(s);
   renderModelLine(s.selected);
   renderTrain(s);
+  renderCollect(s);
   renderShow(s);
   updateWindow(s.exhibit?.window_yaw);
   if (app.kiosk) renderKiosk(s);
@@ -435,7 +438,7 @@ function onState(s) {
   else if (armDev && armDev.state === 'starting') setStatus('Arm powering up…', sub, 'busy');
   else if (s.mode === 'offline') setStatus('Arm offline', sub, 'bad');
   else if (s.task.running) setStatus(describe(s.task), sub, 'busy');
-  else if (teaching) setStatus(`Teaching · ${PHASE_TITLES[s.teach.phase] || 'Learning'}`, sub, 'busy');
+  else if (teaching) setStatus(`${s.teach.kind === 'collect' ? 'Collecting' : 'Teaching'} · ${PHASE_TITLES[s.teach.phase] || 'Learning'}`, sub, 'busy');
   else if (['FAILED', 'DETECTION_FAILED', 'TARGET_UNREACHABLE'].includes(s.task.state)) setStatus(describe(s.task), sub, 'warn');
   else setStatus(s.task.state === 'COMPLETE' ? 'Done' : 'Ready', sub, 'ok');
 
@@ -489,6 +492,7 @@ function onState(s) {
     toast(n ? `Done — sorted ${n} cube${n === 1 ? '' : 's'}!` : 'Done — no cubes it could pick.');
     if (n) celebrate(null, 160);
   }
+  if (s.task.state === 'PATTERN_DONE' && app.lastState !== 'PATTERN_DONE') celebrate(null, app.kiosk ? 220 : 120);
   app.lastState = s.task.state;
 
   // joints follow the arm unless being dragged
@@ -847,6 +851,8 @@ const PHASE_TITLES = {
   check: 'Step 4 · Got it?', training: 'Learning…', testing: 'Trying on my own…', test_ready: 'Test time!',
   teach_here: 'New spot', correct: 'Missed', drop: 'Drop spots', review: 'Review', stopped: 'Stopped',
   camera_moved: 'Camera moved?', ended: 'Done',
+  collect_setup: 'Ready to collect', collect_handover: 'Hand me the cube', collect_lost: 'Lost the cube',
+  collect_give_back: 'Take the cube',
 };
 const STEP_OF = { menu: 0, reading: 0, above: 1, grab: 2, close: 3, check: 4 };
 const BUSY = ['starting', 'reading', 'moving', 'training', 'testing'];
@@ -863,6 +869,8 @@ const CHOICES = {
   check: ['Go Through Them', 'primary'], done: ['Done', 'tinted'], delete: ['Delete', 'destructive'], keep: ['Keep', 'tinted'],
   home: ['Open & Go Home', 'primary'], stay: ['Stay Here', 'tinted'],
   carry_on: ['Carry On', 'primary'], quit: ['End', 'tinted'],
+  start: ['Start Collecting', 'primary'], ok: ['OK', 'primary'],
+  'collect_handover:quit': ['Stop Collecting', 'tinted'], 'collect_lost:quit': ['Stop Collecting', 'tinted'],
 };
 const KIND_NAMES = { knn: 'Nearest neighbours', poly1: 'Flat plane', poly2: 'Curve', poly3: 'Wiggly curve', mlp: 'Neural net' };
 const modelLabel = (name) => (name ? String(name).replace('model_', 'Model ').replace(/ 0+(\d)/, ' $1') : 'model');
@@ -922,7 +930,7 @@ async function nudge(joint, delta) {
 function fillSessions() {
   const sessions = app.info.sessions || [];
   const current = app.state?.selected?.session || app.info.default_session || '';
-  for (const select of [$('train-session'), $('session')]) {
+  for (const select of [$('train-session'), $('session'), $('collect-session')]) {
     const keep = select.value || current;
     select.replaceChildren(...sessions.map((s) => new Option(`${s.name} · ${s.examples} examples`, s.name)));
     if (!sessions.length) select.append(new Option('No sessions yet', ''));
@@ -982,7 +990,7 @@ $('end-teach').onclick = async () => {
 };
 
 function renderTrain(s) {
-  const t = s.teach;
+  const t = s.teach && s.teach.kind !== 'collect' ? s.teach : null;
   const live = !!t && !t.done;
   $('train-setup').classList.toggle('hidden', live);
   $('train-live').classList.toggle('hidden', !live);
@@ -1048,12 +1056,11 @@ function renderTrain(s) {
   handleTeachEvents(t);
 }
 
-function renderChoices(t) {
+function renderChoices(t, box = $('teach-choices')) {
   const key = `${t.phase}|${t.choices.join(',')}`;
-  const box = $('teach-choices');
   if (box.dataset.key === key) return;
   box.dataset.key = key;
-  box.replaceChildren(...t.choices.filter((c) => c !== 'quit' || t.phase !== 'menu').map((choice) => {
+  box.replaceChildren(...t.choices.filter((c) => c !== 'quit' || !['menu', 'collect_setup'].includes(t.phase)).map((choice) => {
     const [label, kind] = CHOICES[`${t.phase}:${choice}`] || CHOICES[choice] || [nice(choice), 'tinted'];
     const b = el('button', `btn ${kind}`, label);
     if (choice === 'record') b.classList.add('wide');
@@ -1121,6 +1128,109 @@ function handleTeachEvents(t) {
 function shake(node) { node.classList.remove('shake'); void node.offsetWidth; node.classList.add('shake'); }
 function flash(node) { node.classList.remove('flash'); void node.offsetWidth; node.classList.add('flash'); }
 
+// ---------------------------------------------------------------- collect tab (auto-collect)
+
+function wireCollect() {
+  const save = (body) => drive('/api/collect/settings', body);
+  holdRepeat($('col-minus'), () => nudge(0, -2));   // smaller base angle = turn right
+  holdRepeat($('col-plus'), () => nudge(0, 2));
+  $('col-set-left').onclick = () => save({ set_end: 'left' });
+  $('col-set-right').onclick = () => save({ set_end: 'right' });
+  wireSegmented($('collect-step'), (v) => save({ step: Number(v) }));
+  $('collect-seed').onchange = (e) => save({ seed: e.target.value });
+  wireSegmented($('collect-mode'), (v) => save({ mode: v }));
+  $('collect-list').onchange = (e) => { if (e.target.dataset.id) save({ toggle: e.target.dataset.id }); };
+  $('collect-skip').onclick = () => save({ skip_arc: true });
+  $('start-collect').onclick = async () => {
+    $('collect-error').textContent = '';
+    const session = $('collect-session').value;
+    if (!session) { $('collect-error').textContent = 'Teach an example first (Train tab).'; return; }
+    if (!(await ensureControl())) return;
+    try { await api('/api/collect/start', { session }); } catch (err) { $('collect-error').textContent = err.message; }
+  };
+  $('end-collect').onclick = async () => {
+    const t = app.state?.teach;
+    if (t?.choices.includes('quit') && t.phase === 'collect_setup') { drive('/api/teach/answer', { choice: 'quit' }); return; }
+    if (!confirm('End auto-collect now? Examples saved so far are kept.')) return;
+    drive('/api/teach/stop', {});
+  };
+}
+
+function renderCollect(s) {
+  const t = s.teach && s.teach.kind === 'collect' ? s.teach : null;
+  const live = !!t && !t.done;
+  $('collect-setup').classList.toggle('hidden', live);
+  $('collect-live').classList.toggle('hidden', !live);
+  if (!live && app.collectWasLive) refreshInfo().then(() => loadModels($('train-session').value));
+  app.collectWasLive = live;
+  if (!live) {
+    const sel = s.selected?.session;
+    if (sel && document.activeElement !== $('collect-session') && $('collect-session').value !== sel) $('collect-session').value = sel;
+    return;
+  }
+  const c = t.collect;
+  const setup = t.phase === 'collect_setup';
+  $('collect-title').textContent = PHASE_TITLES[t.phase] || t.phase;
+  $('collect-session-pill').textContent = t.session;
+  $('collect-prompt').textContent = t.prompt;
+  $('collect-prompt').classList.toggle('busy', BUSY.includes(t.phase));
+  $('collect-settings').classList.toggle('hidden', !setup);
+
+  // what to repeat: one example, or every ticked one (a taught line)
+  const all = c.settings.mode === 'all';
+  if (!document.activeElement?.closest?.('#collect-mode')) setSegmented($('collect-mode'), c.settings.mode);
+  $('collect-one').classList.toggle('hidden', all);
+  $('collect-all').classList.toggle('hidden', !all);
+  const listKey = JSON.stringify(c.seeds.map((e) => [e.id, e.ticked, e.todo]));
+  if ($('collect-list').dataset.key !== listKey) {
+    $('collect-list').dataset.key = listKey;
+    const inOrder = [...c.seeds].reverse();      // taught order: the line from the base outwards
+    $('collect-list').replaceChildren(...inOrder.map((e, i) => {
+      const row = el('label', 'cell seed-row');
+      const box = el('input');
+      Object.assign(box, { type: 'checkbox', checked: e.ticked });
+      box.dataset.id = e.id;
+      const text = el('span', 'seed-text');
+      text.append(el('strong', '', `${i + 1}. ${nice(e.color || 'cube')} at (${e.x}, ${e.y}) px`),
+        el('span', 'secondary small', `base ${e.base}° · ${e.todo ? `${e.todo} spots to do` : 'arc done'}`));
+      row.append(box, text);
+      return row;
+    }));
+  }
+
+  // which example to repeat
+  const seedKey = JSON.stringify([c.seeds, c.seed]);
+  if ($('collect-seed').dataset.key !== seedKey && document.activeElement !== $('collect-seed')) {
+    $('collect-seed').dataset.key = seedKey;
+    $('collect-seed').replaceChildren(...c.seeds.map((e, i) => new Option(
+      `${i === 0 ? 'Newest · ' : ''}${nice(e.color || 'cube')} at (${e.x}, ${e.y}) px · base ${e.base}°`, e.id)));
+    if (c.seed) $('collect-seed').value = c.seed;
+  }
+  const [lo, hi] = c.window;
+  $('col-left').textContent = `${hi}°`;
+  $('col-right').textContent = `${lo}°`;
+  const base = (s.target || s.servo || [])[0];
+  $('col-now').textContent = base == null ? '–' : `${base}°`;
+  $('col-value').value = base == null ? '–' : `${base}°`;
+  if (!document.activeElement?.closest?.('#collect-step')) setSegmented($('collect-step'), String(c.settings.step));
+
+  // progress while it runs (and the result after)
+  const p = c.progress;
+  $('collect-progress').classList.toggle('hidden', !p.total);
+  $('collect-arc').textContent = p.arcs ? `Arc ${p.arc || 1} of ${p.arcs}` : '';
+  $('collect-skip').classList.toggle('hidden', setup || p.arcs < 1);
+  if (p.total) {
+    $('collect-bar').style.width = `${Math.round((p.done / p.total) * 100)}%`;
+    renderStats($('collect-stats'), [[String(p.saved), 'new examples'], [String(p.skipped), 'skipped'],
+      [String(Math.max(0, p.total - p.done)), p.base != null && !setup ? `left · now ${p.base}°` : 'left']]);
+  }
+  renderChoices(t, $('collect-choices'));
+  renderStats($('collect-model'), [[String(t.examples), 'examples in total'],
+    [t.model?.error_deg != null ? `±${t.model.error_deg}°` : '–', 'typical error'],
+    [setup ? String(c.planned) : '–', 'spots to do']]);
+  handleTeachEvents(t);
+}
+
 // ---------------------------------------------------------------- show tab (exhibition mode)
 
 function wireShow() {
@@ -1133,6 +1243,14 @@ function wireShow() {
   wireSegmented($('show-rest'), (v) => save({ rest_s: Number(v) }));
   wireSegmented($('show-moves'), (v) => save({ moves_per_round: Number(v) }));
   $('show-attract').onchange = (e) => save({ attract: e.target.checked });
+  $('show-patterns').onclick = (e) => {
+    const b = e.target.closest('.chip');
+    if (!b) return;
+    const on = new Set(app.state?.exhibit?.settings?.patterns || []);
+    if (on.has(b.dataset.pattern)) on.delete(b.dataset.pattern); else on.add(b.dataset.pattern);
+    if (!on.size) { toast('Keep at least one pattern.'); return; }
+    save({ patterns: [...on] });
+  };
   $('start-show').onclick = async () => {
     $('show-error').textContent = '';
     if (!(await ensureControl())) return;
@@ -1158,6 +1276,8 @@ function exhibitStats(task) {
   };
 }
 
+const PATTERN_NAMES = { line: 'Line by colour', arc: 'Circle', zones: 'Colour zones', swap: 'Swap', shuffle: 'Shuffle' };
+
 function renderShow(s) {
   const ex = s.exhibit;
   if (!ex) return;
@@ -1179,6 +1299,15 @@ function renderShow(s) {
   if (!document.activeElement?.closest?.('#show-rest')) setSegmented($('show-rest'), String(set.rest_s));
   if (!document.activeElement?.closest?.('#show-moves')) setSegmented($('show-moves'), String(set.moves_per_round));
   $('show-attract').checked = !!set.attract;
+  const playlistKey = JSON.stringify(set.patterns);
+  if ($('show-patterns').dataset.key !== playlistKey) {
+    $('show-patterns').dataset.key = playlistKey;
+    $('show-patterns').replaceChildren(...Object.entries(PATTERN_NAMES).map(([key, label]) => {
+      const b = chip(label, null, set.patterns.includes(key));
+      b.dataset.pattern = key;
+      return b;
+    }));
+  }
   if (!running) return;
   const st = exhibitStats(s.task);
   $('show-title').textContent = describe(s.task);
@@ -1296,7 +1425,7 @@ function buildMove() {
 
 // ---------------------------------------------------------------- tabs + panel
 
-const TABS = ['sort', 'train', 'show', 'move'];
+const TABS = ['sort', 'train', 'collect', 'show', 'move'];
 function setTab(tab) {
   app.tab = TABS.includes(tab) ? tab : 'sort';
   store.set('tab', app.tab);
@@ -1485,6 +1614,13 @@ function drawOverlays(time) {
         bracket(ctx, map(c.box), colorCss(c.color), ok ? pulse : 0.45, !ok);
         if (!small) label(ctx, map(c.box), `${nice(c.color)}${c.known === false ? ' · not taught' : ''}`, colorCss(c.color), ok ? 1 : 0.55);
       }
+      const spots = app.state.teach && !app.state.teach.done ? app.state.teach.spots || [] : [];
+      for (const [x, y, kind] of spots) {
+        ctx.beginPath();
+        ctx.arc(ox + x * scale, oy + y * scale, small ? 2 : 3.5, 0, Math.PI * 2);
+        ctx.fillStyle = kind === 'sweep' ? 'rgba(52, 199, 89, 0.9)' : 'rgba(10, 132, 255, 0.95)';
+        ctx.fill();
+      }
       for (const r of cubes.rejected || []) {
         const [x1, y1, x2, y2] = map(r.box);
         ctx.save();
@@ -1496,6 +1632,27 @@ function drawOverlays(time) {
         ctx.strokeRect(x1, y1, x2 - x1, y2 - y1);
         ctx.restore();
         if (!small) label(ctx, [x1, y1], `${nice(r.color)}? ${r.reason}`, colorCss(r.color), 0.85);
+      }
+      const ghosts = app.state.task.running ? app.state.task.current?.targets || [] : [];
+      const ghostSize = 28 * scale;
+      for (const [gx, gy, color, done] of ghosts) {
+        const x = ox + gx * scale, y = oy + gy * scale;
+        ctx.save();
+        ctx.strokeStyle = color ? colorCss(color) : '#ffffff';
+        ctx.fillStyle = color ? colorCss(color) : '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.setLineDash(done ? [] : [4, 4]);
+        ctx.globalAlpha = done ? 0.9 : 0.75;
+        ctx.strokeRect(x - ghostSize / 2, y - ghostSize / 2, ghostSize, ghostSize);
+        ctx.globalAlpha = done ? 0.35 : 0.12;
+        ctx.fillRect(x - ghostSize / 2, y - ghostSize / 2, ghostSize, ghostSize);
+        if (done && !small) {
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = '#fff';
+          ctx.font = '700 14px -apple-system, "Segoe UI", sans-serif';
+          ctx.fillText('✓', x - 5, y + 5);
+        }
+        ctx.restore();
       }
       const px = app.state.task.running && app.state.task.current?.pixel;
       const place = app.state.task.running && app.state.task.current?.place_pixel;

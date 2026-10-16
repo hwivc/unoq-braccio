@@ -255,6 +255,83 @@
         </div>
       </div>
 
+      <!-- COLLECT: many examples from one, by turning the base -->
+      <div class="tab hidden" id="tab-collect">
+        <div id="collect-setup">
+          <h2>Auto-collect</h2>
+          <p class="secondary small">Teach ONE example in Train, then the arm repeats it all along the base:
+            it puts the cube down at each step, sees where it landed, picks it back up to check and saves it.
+            One example fills one arc; teach one nearer or further out to fill another.</p>
+          <div class="row-label">Session</div>
+          <div class="select-row">
+            <select id="collect-session" aria-label="Session"></select>
+          </div>
+          <button class="btn primary large" id="start-collect">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6V2l4 3-4 3z"/></svg>
+            <span>Open Auto-collect</span>
+          </button>
+          <p class="error" id="collect-error" role="alert"></p>
+        </div>
+
+        <div id="collect-live" class="hidden">
+          <div class="teach-head">
+            <h2 id="collect-title">Auto-collect</h2>
+            <span class="pill" id="collect-session-pill"></span>
+          </div>
+          <p class="teach-prompt" id="collect-prompt"></p>
+
+          <div id="collect-settings">
+            <div class="row-label">What to repeat</div>
+            <div class="segmented" id="collect-mode" role="radiogroup" aria-label="What to repeat">
+              <button role="radio" data-value="one" aria-checked="true">One example</button>
+              <button role="radio" data-value="all" aria-checked="false">Sweep all (a line)</button>
+            </div>
+            <div id="collect-one">
+              <select class="wide-select collect-pick" id="collect-seed" aria-label="Example to repeat"></select>
+            </div>
+            <div id="collect-all" class="hidden">
+              <p class="secondary small collect-hint">Teach a straight line from the base outwards, an example every
+                3–4 cm (Train tab). Each ticked one becomes an arc, nearest first.</p>
+              <div class="group seed-list" id="collect-list"></div>
+            </div>
+            <div class="row-label">Base range <span class="secondary small">· drive the base, then set each end</span></div>
+            <div class="window-box">
+              <div class="window-readout">
+                <div><span>Left end</span><strong id="col-left">–</strong></div>
+                <div class="now"><span>Base now</span><strong id="col-now">–</strong></div>
+                <div><span>Right end</span><strong id="col-right">–</strong></div>
+              </div>
+              <div class="jog-row window-jog">
+                <span class="jog-label">Base</span>
+                <button class="jog-btn" id="col-minus" aria-label="Turn right">−</button>
+                <output class="jog-value" id="col-value">–</output>
+                <button class="jog-btn" id="col-plus" aria-label="Turn left">+</button>
+              </div>
+              <div class="row-buttons window-buttons">
+                <button class="btn tinted small-btn" id="col-set-left">Set Left End</button>
+                <button class="btn tinted small-btn" id="col-set-right">Set Right End</button>
+              </div>
+            </div>
+            <div class="row-label">Step between examples</div>
+            <div class="segmented" id="collect-step" role="radiogroup" aria-label="Step">
+              <button role="radio" data-value="3" aria-checked="false">3°</button>
+              <button role="radio" data-value="5" aria-checked="true">5°</button>
+              <button role="radio" data-value="10" aria-checked="false">10°</button>
+            </div>
+          </div>
+
+          <div class="collect-progress hidden" id="collect-progress">
+            <div class="arc-line"><span id="collect-arc"></span>
+              <button class="btn plain small-btn" id="collect-skip">Skip this arc</button></div>
+            <div class="progress-track"><span class="progress-bar" id="collect-bar"></span></div>
+            <div class="stats" id="collect-stats"></div>
+          </div>
+          <div class="choices" id="collect-choices"></div>
+          <div class="stats" id="collect-model"></div>
+          <button class="btn plain end-teach" id="end-collect">End Auto-collect</button>
+        </div>
+      </div>
+
       <!-- SHOW: exhibition mode -->
       <div class="tab hidden" id="tab-show">
         <div id="show-setup">
@@ -282,6 +359,9 @@
             </div>
             <p class="secondary small window-note" id="win-note"></p>
           </div>
+
+          <div class="row-label">Playlist <span class="secondary small">· patterns it makes, in turn</span></div>
+          <div class="chips" id="show-patterns" role="group" aria-label="Patterns"></div>
 
           <div class="row-label">Rest between rounds <span class="secondary small">· lets the servos cool</span></div>
           <div class="segmented" id="show-rest" role="radiogroup" aria-label="Rest">
@@ -345,6 +425,9 @@
         <button role="tab" aria-selected="false" data-tab="train">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 1 9l11 6 9-4.9V17h2V9zM5 13.2v4L12 21l7-3.8v-4L12 17z"/></svg>
           <span>Train</span></button>
+        <button role="tab" aria-selected="false" data-tab="collect">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-6-6V2l4 3-4 3z"/><circle cx="12" cy="12" r="2.2"/></svg>
+          <span>Collect</span></button>
         <button role="tab" aria-selected="false" data-tab="show">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l2.6 6.2 6.7.6-5.1 4.4 1.6 6.6L12 16.3l-5.8 3.5 1.6-6.6L2.7 8.8l6.7-.6z"/></svg>
           <span>Show</span></button>

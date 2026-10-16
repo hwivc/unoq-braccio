@@ -126,7 +126,7 @@ def find_camera(ports=None):
                  "plug the Grove Vision AI V2 in (check the USB cable or hub)")
 
 
-def camera_port_problem(port, ports=None):
+def camera_port_problem(port, ports=None, arm_link="/dev/braccio"):
     """Why ``port`` must not be opened as the camera, or None if it may be.
 
     Manual choices may name a board auto-detect does not know, but never the
@@ -137,7 +137,7 @@ def camera_port_problem(port, ports=None):
     found = next((p for p in ports if os.path.realpath(p["port"]) == real), None)
     if found is None:
         return f"{port} does not exist (unplugged?)"
-    if found["kind"] == "arm" or real == os.path.realpath("/dev/braccio"):
+    if found["kind"] == "arm" or (os.path.exists(arm_link) and real == os.path.realpath(arm_link)):
         return f"{port} is the arm's board ({found['name']}), not a camera"
     return None
 
@@ -155,13 +155,13 @@ def check_arm_choice(port, ports=None):
     return True, ""
 
 
-def check_camera_choice(source, ports=None, videos=None):
+def check_camera_choice(source, ports=None, videos=None, arm_link="/dev/braccio"):
     """(ok, message) for the camera source a person typed or picked."""
     source = str(source or "").strip()
     if source == "auto":
         return True, ""
     if source.startswith("grove:"):
-        problem = camera_port_problem(source[len("grove:"):], ports)
+        problem = camera_port_problem(source[len("grove:"):], ports, arm_link)
         return (False, problem) if problem else (True, "")
     if source.isdigit() and int(source) < 64:
         return True, ""
