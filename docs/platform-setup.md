@@ -1,5 +1,10 @@
 # Platform Setup
 
+**Raspberry Pi 5:** use Ubuntu Server 24.04 and follow the
+[Raspberry Pi section of the README](../README.md#raspberry-pi-5-ubuntu-server)
+(a lighter install than below: no desktop, RViz or Gazebo). Raspberry Pi OS
+has no ROS 2 Jazzy packages.
+
 This project targets ROS 2 Jazzy and Gazebo on Ubuntu 24.04. Linux is the
 reference environment. Windows is supported through WSL2 for ROS 2 and Gazebo,
 with native Windows used for Arduino flashing if preferred. macOS is best used

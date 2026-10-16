@@ -2,9 +2,13 @@
 
 A TinkerKit Braccio arm that finds coloured cubes with an overhead camera and
 sorts them. On the **real arm** (Arduino UNO over USB serial) you teach it to
-pick by driving it onto cubes a few dozen times; a small learned model (kNN)
-then maps what the camera sees straight to servo angles, so no camera or arm
-calibration is needed. In **Gazebo simulation** it uses inverse kinematics.
+pick by driving it onto cubes a few times; a small learned model (kNN) then
+maps what the camera sees straight to servo angles, so no camera or arm
+calibration is needed. It can collect most of its examples by itself, and an
+**exhibition mode** keeps it making patterns with the cubes for hours.
+Everything is watched and driven from a **web page** on any phone or laptop,
+so it runs headless on a **Raspberry Pi 5**. In **Gazebo simulation** it uses
+inverse kinematics.
 
 <p align="center">
   <img src="docs/braccio.gif" width="800" alt="Braccio demo">
@@ -14,15 +18,123 @@ calibration is needed. In **Gazebo simulation** it uses inverse kinematics.
 |---|---|
 | <img width="400" alt="Gazebo simulation" src="https://github.com/user-attachments/assets/7736b383-4374-40f8-bcf9-347998eaff60" /> | <img width="400" alt="Braccio on the bench" src="https://github.com/user-attachments/assets/db8d983e-142a-4fbe-8bbe-c46fc83fc3e3" /> |
 
-**Contents:** [Build](#build) · [Simulation](#simulation) ·
-[Real arm](#real-arm-arduino-uno) · [Teach it to pick](#teach-the-real-arm-to-pick) ·
-[Web dashboard](#web-dashboard) · [Exhibition](#exhibition-mode) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
+**Contents:** [Raspberry Pi 5](#raspberry-pi-5-ubuntu-server) · [Build (PC)](#build-pc) ·
+[Simulation](#simulation) · [Real arm](#real-arm-arduino-uno) ·
+[Teach it to pick](#teach-the-real-arm-to-pick) · [Web dashboard](#web-dashboard) ·
+[Exhibition](#exhibition-mode) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
 [Troubleshooting](#troubleshooting) · [Layout](#repository-layout) ·
 [Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
 
-## Build
+## Raspberry Pi 5 (Ubuntu Server)
 
-Ubuntu 24.04 + ROS 2 Jazzy. Full install steps for each OS:
+The arm, the camera and the web dashboard run on a Pi 5 with no screen; you
+use it from a browser. Raspberry Pi OS is not supported (there are no ROS 2
+Jazzy packages for it): use **Ubuntu Server 24.04 (64-bit)**.
+
+**Hardware:** Pi 5 with the official 5 V / 5 A USB-C supply (a weaker supply
+limits USB current), the Arduino UNO + Braccio shield with its own 5 V / 4 A+
+servo supply, and the overhead camera (a Grove Vision AI V2 with its
+Raspberry Pi camera, or a USB webcam). Plug the UNO and the camera straight
+into the Pi, or use a **powered** USB hub: an unpowered hub can drop both
+boards mid-run.
+
+1. **Flash the SD card** with Raspberry Pi Imager: *Other general-purpose OS →
+   Ubuntu → Ubuntu Server 24.04 LTS (64-bit)*. In its settings, set the user,
+   Wi-Fi and enable SSH. Boot the Pi and SSH in.
+
+2. **Install ROS 2 Jazzy, the light version** (no desktop, RViz or Gazebo),
+   following the official [Ubuntu install guide](https://docs.ros.org/en/jazzy/Installation/Ubuntu-Install-Debs.html)
+   to add the ROS apt source, then:
+
+   ```bash
+   sudo apt update
+   sudo apt install -y ros-jazzy-ros-base ros-jazzy-xacro ros-jazzy-cv-bridge \
+     python3-colcon-common-extensions python3-opencv python3-serial python3-yaml \
+     python3-numpy python3-pip git
+   echo "source /opt/ros/jazzy/setup.bash" >> ~/.bashrc && source ~/.bashrc
+   ```
+
+3. **Get the code and build** (only the three packages the arm needs; `rosdep`
+   is skipped on purpose, it would install Gazebo):
+
+   ```bash
+   git clone <this repository> ~/unoq-braccio
+   cd ~/unoq-braccio/ros2_ws
+   colcon build --symlink-install --packages-select unoq_braccio_sim unoq_braccio_driver unoq_braccio_bringup
+   echo "source ~/unoq-braccio/ros2_ws/install/setup.bash" >> ~/.bashrc && source ~/.bashrc
+   ```
+
+   With `--symlink-install`, a later `git pull` needs no rebuild for Python
+   or web page changes (rebuild after adding files or new programs).
+
+4. **Grove Vision AI V2 driver** (skip it for a USB webcam):
+
+   ```bash
+   pip install --break-system-packages -e <path to>/ROS--2-Ten-Months-Challenge/test_camera
+   ```
+
+5. **USB names and permission** (once; then log out and back in):
+
+   ```bash
+   bash ~/unoq-braccio/scripts/setup_uno_serial.sh
+   ```
+
+   This gives the UNO `/dev/braccio` and the Grove board `/dev/grove_vision`,
+   adds you to `dialout`, and stops ModemManager probing them. Not strictly
+   needed (both are also found by USB id), but it keeps names stable.
+
+6. **Flash the UNO** once, from the Pi or any PC: see [Real arm](#real-arm-arduino-uno).
+
+7. **Start everything:**
+
+   ```bash
+   ros2 launch unoq_braccio_bringup pi.launch.py
+   ```
+
+   It finds the UNO and the Grove camera by USB id whichever port they land
+   on (and reconnects when they are re-plugged), starts the web dashboard
+   with no RViz, and prints the address, e.g. `http://192.168.1.31:8000`.
+   Open it on a phone or laptop on the same network; the first time, enter
+   the pairing code the terminal shows. Other cameras:
+   `pi.launch.py camera:=0` (USB webcam), or pick one later in
+   **Settings → Devices**. Options: `web_port:=8080`, `speed:=40`,
+   `grove_resolution:=0|1|2`.
+
+8. **Then, in the browser:** Sort → **Add colour** (tap each cube colour
+   once), Train → teach a few examples, Collect → let it collect the rest,
+   Show → start the exhibition. See [Web dashboard](#web-dashboard).
+
+**Keep it running after you log out:** run the launch inside `tmux`, or as a
+service so it also starts at boot and restarts if it stops:
+
+```bash
+sudo tee /etc/systemd/system/braccio.service > /dev/null <<UNIT
+[Unit]
+Description=Braccio arm and web dashboard
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=$USER
+ExecStart=/bin/bash -lc 'source /opt/ros/jazzy/setup.bash && source $HOME/unoq-braccio/ros2_ws/install/setup.bash && exec ros2 launch unoq_braccio_bringup pi.launch.py'
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+UNIT
+sudo systemctl daemon-reload && sudo systemctl enable --now braccio
+journalctl -u braccio -f          # its log (the web page's live log shows the same)
+```
+
+Update later with `cd ~/unoq-braccio && git pull`, then
+`sudo systemctl restart braccio` (or Ctrl+C and start the launch again).
+
+## Build (PC)
+
+A desktop or laptop with Ubuntu 24.04 + ROS 2 Jazzy Desktop, for the
+simulation and for development (for the Pi see
+[above](#raspberry-pi-5-ubuntu-server)). Full install steps for each OS:
 [docs/platform-setup.md](docs/platform-setup.md).
 
 ```bash
@@ -73,9 +185,11 @@ PC / Raspberry Pi 5 (ROS 2, camera)  --USB-->  Arduino UNO + Braccio shield  -->
 
 **Hardware:** TinkerKit Braccio with its shield on an Arduino UNO R3 (R4
 Minima/WiFi also work), a 5 V supply of 4 A or more for the servos, and an
-overhead camera: a USB webcam (`camera:=0`) or a phone running the IP Webcam
-app (`camera:=http://<phone-ip>:8080/video`). Power the servos from the
-shield's own supply, never from USB.
+overhead camera: a Grove Vision AI V2 with its Raspberry Pi camera
+(`camera:=grove`, see [docs/camera.md](docs/camera.md)), a USB webcam
+(`camera:=0`), or a phone running the IP Webcam app
+(`camera:=http://<phone-ip>:8080/video`). Power the servos from the shield's
+own supply, never from USB.
 
 1. **Flash the UNO** (once):
 
@@ -98,11 +212,23 @@ shield's own supply, never from USB.
    ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio
    ```
 
+   `serial_port:=auto` finds the UNO by its USB id instead (the Pi launch
+   does this by default); a port number like `/dev/ttyACM0` can change with
+   plug-in order.
+
    On power-up the arm stands straight up and waits about 8 s while the UNO
    resets and powers its servos gently. Wiring, serial protocol and
    troubleshooting: [docs/hardware.md](docs/hardware.md).
 
 ## Teach the real arm to pick
+
+**Easiest: in the web dashboard.** Train tab → record a few examples with
+the on-screen buttons (same flow as below), then Collect tab → **Sweep all**:
+teach a straight line of 4–6 examples from the base outwards and the arm
+collects an arc of examples from each one by itself. Cube colours: Sort tab →
+**Add colour**, tap the cube in the camera picture. See
+[Web dashboard](#web-dashboard). The terminal tools below do the same and
+write the same sessions.
 
 Each example stores what the camera saw (cube position and angle) and the
 servo angles you drove the arm to. The model blends the nearest examples
@@ -200,6 +326,9 @@ freezes the arm. Watch it with `ros2 topic echo /task/state`.
 
 ### Live demo: copy and paste
 
+On the Raspberry Pi, `pi.launch.py` and the web dashboard's **Sort** tab do
+all of this (pick colours, Start). From terminals on a PC:
+
 Terminal 1, the arm and camera (keep it running; `web:=true` also starts the
 [web dashboard](#web-dashboard)):
 
@@ -245,6 +374,7 @@ the overhead camera, what the arm is doing, and the controls. It works with
 the real arm and with the simulation.
 
 ```bash
+ros2 launch unoq_braccio_bringup pi.launch.py                   # Raspberry Pi: always on
 ros2 launch unoq_braccio_bringup real.launch.py ... web:=true   # with the real arm
 ros2 launch unoq_braccio_bringup sim.launch.py web:=true        # with Gazebo
 ros2 run unoq_braccio_driver web_dashboard                      # or on its own, next to either
@@ -259,20 +389,22 @@ invite people and see Advanced).
 
 | Where | What |
 |---|---|
-| Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are. Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put one cube under the camera, name it, save (the same measurement as `real_setup`'s colours step); **Edit** removes colours |
+| Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are (or, when it sees none, why: no colours saved, a blob too big or cut off). Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put a cube on the table, tap it in the camera picture, name it, save (same name = measure it again); **Edit** removes colours |
+| Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
 | Collect | **Auto-collect**: teach ONE example in Train, set the base's two ends and a step (3/5/10°); the arm repeats that example at every step: puts the cube down, reads where it landed, picks it back up to check, saves it. One example fills one arc; **Sweep all** sweeps every ticked taught example in turn, so a straight line of 4–6 examples taught from the base outwards becomes a grid over the whole table. Only asks for OK to hand over or put back a lost cube. Dots on the camera show the covered spots |
 | Show | Exhibition mode: base window, playlist of patterns, rests, Start / Stop, counters; link to the `/show` big screen |
-| Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
 | Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
 | Stop (red, bottom right) | Stops the task (or teaching's current move) and holds the arm where it is. Always there; `Esc` on a keyboard |
-| Camera (top right) | Tap to swap with the 3D view. Boxes and labels mark the cubes it sees (and the cube being picked). Buttons: smaller / bigger, boxes on / off, picture adjust (zoom, brightness, contrast, rotate, mirror; kept per browser) |
+| Camera (top right) | Tap to swap with the 3D view. Boxes and labels mark the cubes it sees, dashed boxes the coloured blobs it rejected and why, the cube being picked and where it goes, and an exhibition pattern's targets. Buttons: smaller / bigger, boxes on / off, 💧 colour mask (paints every pixel of each saved colour, to check a colour still matches), picture adjust (zoom, brightness, contrast, rotate, mirror; kept per browser) |
 | Live log (`>_`, bottom right) | Every ROS node's log (`/rosout`), live, green on black; warnings amber, errors red |
-| Settings | Account, theme, Reduce Transparency, Celebrations, people; Advanced: examples review, drop mode, raw servo values |
+| Settings | Account, **Devices** (arm and camera status, every USB serial device and camera; owners can pin the arm or camera to a port, switch to another camera or a stream URL, or reconnect, with no restart), theme, Reduce Transparency, Celebrations, people; Advanced: examples review, drop mode, raw servo values |
+| `/show` | The big screen for a TV: what the arm is doing in large type, counters, camera, 3D arm and live log |
 
 Only one person drives at a time; others see who is in control and can take
 over. Drag to orbit the 3D view, pinch or scroll to zoom, double-click to reset.
 Accounts are in `~/.ros/braccio_web.yaml` (salted password hashes; delete an
-entry to remove someone). Options: `-p port:=8000`, and
+entry to remove someone). After an update, a normal reload of the page is
+enough (the page is never cached). Options: `-p port:=8000`, and
 `-p certfile:=... -p keyfile:=...` for HTTPS if the network is not trusted.
 
 ## Exhibition mode
@@ -283,7 +415,8 @@ hours, making one pattern after another from a **playlist**: *line up by colour*
 1. **Base window**: drive the base with − / + to the furthest it may turn one
    way, **Set Left End**; the other way, **Set Right End**. The window shows
    as a green wedge in the 3D view.
-2. Choose the rest (15 s – 2 min) and cubes moved per round, then **Start Exhibition**.
+2. Choose the patterns in the **playlist**, the rest (15 s – 2 min) and cubes
+   moved per shuffle, then **Start Exhibition**.
 3. Open **`http://<pi>:8000/show`** on a TV or monitor: a big screen with what
    the arm is doing, cubes moved, success rate, the camera, the 3D arm and the
    live log (sign in once, as a viewer).
@@ -361,16 +494,22 @@ Keep API keys in `EDGE_IMPULSE_API_KEY`, never in committed files. Details:
 | Real arm status | `ros2 topic echo /braccio/firmware_status` |
 | Real camera: which cubes does it see? | open `teach_pick`: its menu line shows the cubes it sees right now |
 | Learned picks miss | `R` in `teach_pick`, then teach where it misses |
-| Which serial port? | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio` |
+| Which serial port? | `ls /dev/ttyACM* /dev/ttyUSB* /dev/braccio`, or Settings → Devices on the web page |
+| "No arm found" / "No Grove camera found" | The board is not seen by Linux at all: `lsusb` must list `2341:0043` (UNO) and `1a86:55d3` (Grove). Re-plug the cable or hub; use a powered hub or plug straight in (`journalctl -k \| grep usb` shows drops) |
+| Camera sees no cubes | No colours saved, or they were measured with another camera or light: Sort → Add colour, tap each cube again. 💧 on the camera shows what each colour matches; dashed boxes say why a blob was rejected (e.g. held too close: too big) |
+| Web page shows old features | Reload it once after an update |
 | Layout / IK / protocol / calibration checks (no ROS needed) | `python ros2_ws/src/unoq_braccio_driver/test/test_workspace.py` (also `test_protocol.py`, `test_camera_calibration.py`) |
 
 ## Repository layout
 
 ```text
 firmware/braccio_uno_firmware/   Arduino UNO serial firmware (servos only)
-ros2_ws/src/unoq_braccio_driver/ ROS 2 nodes: serial bridge, vision, teaching (teach_pick, pick_learning), pick and place
+ros2_ws/src/unoq_braccio_driver/ ROS 2 nodes: serial bridge, cameras (camera_node: USB, stream, Grove), vision,
+                                 teaching (teach_pick, pick_learning), pick and place (learned_pick_demo),
+                                 exhibition (exhibition, exhibition_demo), web dashboard (web_dashboard,
+                                 web_teach, web_collect, web_colors, web_auth), USB devices (usb_devices)
 ros2_ws/src/unoq_braccio_sim/    URDF, Gazebo world, controllers
-ros2_ws/src/unoq_braccio_bringup/ Launch files
+ros2_ws/src/unoq_braccio_bringup/ Launch files (pi.launch.py: the Raspberry Pi; real.launch.py: real arm; sim.launch.py)
 scripts/                         Flashing and setup scripts
 docs/                            Hardware, vision, roadmap and other guides
 edge_impulse/, test/             Edge Impulse integration and the cube model test tool
@@ -382,12 +521,13 @@ legacy/uno_q/                    Earlier Arduino UNO Q set-up: App Lab apps, old
 
 | Topic | Where |
 |---|---|
+| Raspberry Pi 5 set-up | [above](#raspberry-pi-5-ubuntu-server) |
 | Real arm: wiring, protocol, troubleshooting | [docs/hardware.md](docs/hardware.md) |
-| Real camera (USB / phone IP Webcam) and calibration | [docs/camera.md](docs/camera.md) |
+| Real camera (Grove Vision AI V2 / USB / phone IP Webcam) and calibration | [docs/camera.md](docs/camera.md) |
 | What to build next: stacking, building, models | [docs/learning_roadmap.md](docs/learning_roadmap.md) |
 | Manual control and gripper calibration | [docs/manual_control.md](docs/manual_control.md) |
 | Simulation internals | [ros2_ws/src/unoq_braccio_sim/README.md](ros2_ws/src/unoq_braccio_sim/README.md) |
-| Install on Windows / macOS / Linux | [docs/platform-setup.md](docs/platform-setup.md) |
+| Install on Windows / macOS / Linux (PC) | [docs/platform-setup.md](docs/platform-setup.md) |
 | Camera vision | [docs/vision.md](docs/vision.md) |
 | Edge Impulse integration, data capture | [edge_impulse/README.md](edge_impulse/README.md), [edge_impulse/data_capture.md](edge_impulse/data_capture.md) |
 | Roadmap: tutorial plan, new sim features | [docs/roadmap.md](docs/roadmap.md) |
