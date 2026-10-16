@@ -473,6 +473,7 @@ function onState(s) {
     if (!previous?.task.running) { app.placed = []; renderPlaced(); }
     $('run-title').textContent = describe(s.task);
     const colors = (s.task.colors || []).map((c) => (c === 'all' ? 'all colours' : nice(c).toLowerCase()));
+    $('stop-sort').textContent = s.task.mode === 'exhibition' ? 'Stop Exhibition' : 'Stop Sorting';
     $('run-sub').textContent = s.task.mode === 'exhibition'
       ? `Exhibition mode${s.task.by ? ` · started by ${s.task.by}` : ''}`
       : `Sorting ${colors.join(', ')}${s.task.by ? ` · started by ${s.task.by}` : ''}`;

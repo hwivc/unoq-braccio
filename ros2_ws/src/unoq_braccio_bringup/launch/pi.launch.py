@@ -1,10 +1,11 @@
-"""Raspberry Pi (Ubuntu Server, no screen): the real arm, the camera and the web dashboard.
+"""The one launch for the real arm: arm, camera, cube detection and the web dashboard.
 
-    ros2 launch unoq_braccio_bringup pi.launch.py
-    ros2 launch unoq_braccio_bringup pi.launch.py camera:=grove:/dev/grove_vision
+    ros2 launch unoq_braccio_bringup pi.launch.py                 # everything, used from a browser
+    ros2 launch unoq_braccio_bringup pi.launch.py rviz:=true      # ... plus RViz on this screen
     ros2 launch unoq_braccio_bringup pi.launch.py camera:=0 web_port:=8080
 
-real.launch.py with headless defaults: no RViz, the web dashboard on, and
+Made for a Raspberry Pi with no screen, it works the same on any computer.
+real.launch.py with these defaults: no RViz (rviz:=true adds it), the web dashboard on, and
 both devices found by USB id on every (re)connect, whichever port they land
 on and whatever order they are plugged in: the UNO (``serial_port:=auto``)
 and the Grove Vision AI V2 as the overhead camera (``camera:=grove``).
@@ -37,6 +38,8 @@ def generate_launch_description():
                               description="Arm speed, degrees per second of the fastest joint."),
         DeclareLaunchArgument("web_port", default_value="8000",
                               description="Web dashboard port."),
+        DeclareLaunchArgument("rviz", default_value="false",
+                              description="Also open RViz (needs a screen and RViz installed)."),
     ]
 
     real = IncludeLaunchDescription(
@@ -47,7 +50,7 @@ def generate_launch_description():
             "grove_resolution": arg("grove_resolution"),
             "speed": arg("speed"),
             "web_port": arg("web_port"),
-            "rviz": "false",
+            "rviz": arg("rviz"),
             "web": "true",
         }.items(),
     )

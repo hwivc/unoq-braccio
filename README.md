@@ -18,12 +18,109 @@ inverse kinematics.
 |---|---|
 | <img width="400" alt="Gazebo simulation" src="https://github.com/user-attachments/assets/7736b383-4374-40f8-bcf9-347998eaff60" /> | <img width="400" alt="Braccio on the bench" src="https://github.com/user-attachments/assets/db8d983e-142a-4fbe-8bbe-c46fc83fc3e3" /> |
 
-**Contents:** [Raspberry Pi 5](#raspberry-pi-5-ubuntu-server) · [Build (PC)](#build-pc) ·
-[Simulation](#simulation) · [Real arm](#real-arm-arduino-uno) ·
-[Teach it to pick](#teach-the-real-arm-to-pick) · [Web dashboard](#web-dashboard) ·
-[Exhibition](#exhibition-mode) · [Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) ·
-[Troubleshooting](#troubleshooting) · [Layout](#repository-layout) ·
-[Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
+**Contents:** [Run it](#run-it-one-command) · [Web dashboard](#web-dashboard) ·
+[Exhibition](#exhibition-mode) · [Raspberry Pi 5](#raspberry-pi-5-ubuntu-server) ·
+[Build (PC)](#build-pc) · [Simulation](#simulation) · [Real arm](#real-arm-arduino-uno) ·
+[How it learns](#how-it-learns-to-pick) · [Without the web page](#without-the-web-page-terminal-tools) ·
+[Move the arm](#move-the-arm) · [Vision](#vision-and-edge-impulse) · [Troubleshooting](#troubleshooting) ·
+[Layout](#repository-layout) · [Docs](#more-documentation) · [What next](docs/learning_roadmap.md)
+
+## Run it: one command
+
+One launch starts everything; you then do it all from the web page.
+
+| You want | Run |
+|---|---|
+| **Real arm, everything in the web page** (Raspberry Pi or any computer) | `ros2 launch unoq_braccio_bringup pi.launch.py` |
+| The same, **plus RViz** on this screen | `ros2 launch unoq_braccio_bringup pi.launch.py rviz:=true` |
+| **Simulation** (Gazebo) with the web page | `ros2 launch unoq_braccio_bringup sim.launch.py web:=true` |
+
+`pi.launch.py` starts the serial bridge to the UNO, the overhead camera, cube
+detection, the 3D model and the web dashboard. It finds the UNO and the Grove
+camera by their USB ids, on whatever port they land, and reconnects when they
+are re-plugged. It prints the address, e.g. `http://192.168.1.31:8000`: open
+it on any phone or computer on the same network. The first time, enter the
+pairing code the terminal shows to create the owner account.
+
+Options, all optional: `camera:=0` (USB webcam),
+`camera:=http://<phone-ip>:8080/video` (phone with IP Webcam),
+`camera:=grove:/dev/grove_vision`; `serial_port:=/dev/ttyACM0`;
+`web_port:=8080`; `speed:=40`; `grove_resolution:=0|1|2`. The camera can also
+be switched later in the web page (Settings → Devices).
+
+The other launch files and terminal tools still work, for SSH or debugging:
+[Without the web page](#without-the-web-page-terminal-tools).
+
+## Web dashboard
+
+Watch and control the arm from any phone, tablet or computer on the same
+network: a live 3D model of the arm (the same URDF and transforms RViz uses),
+the overhead camera, what the arm is doing, and the controls. It works with
+the real arm and with the simulation.
+
+Start it with [the one command](#run-it-one-command) (or `sim.launch.py web:=true`).
+
+| | |
+|---|---|
+| <img src="docs/web/sort.jpg" width="440" alt="Sort tab: cubes on the table, colours, 3D arm, camera and live log"><br>**Sort**: the cubes it sees, colours, 3D arm, camera, live log | <img src="docs/web/camera.jpg" width="440" alt="Camera enlarged with a labelled box around each cube"><br>**Camera** enlarged: a labelled box around every cube |
+| <img src="docs/web/train.jpg" width="440" alt="Train tab: session, model and the model race"><br>**Train**: teach examples, the model race | <img src="docs/web/collect.jpg" width="440" alt="Collect tab: Sweep all with a taught line and base range"><br>**Collect**: Sweep all turns a taught line into a grid |
+| <img src="docs/web/show-running.jpg" width="440" alt="Exhibition running: ghost targets of a pattern and the next move"><br>**Show** running: pattern targets and the next move | <img src="docs/web/big-screen.jpg" width="440" alt="The /show big screen for a TV"><br>**`/show`**: the big screen for a TV |
+| <img src="docs/web/devices.jpg" width="440" alt="Settings: arm and camera status and choices"><br>**Settings → Devices**: arm and camera, found by USB id | <img src="docs/web/phone.jpg" width="180" alt="The dashboard on a phone"><br>**On a phone** |
+
+The terminal prints the address (e.g. `http://192.168.1.31:8000`) and, the
+first time, a **pairing code**: open the address, enter the code and choose a
+name and password. That makes you the owner. Invite others in Settings →
+**Show Pairing Code**: each code works once, for 10 minutes, as an
+**operator** (can control), **viewer** (can only watch) or **owner** (can also
+invite people and see Advanced).
+
+| Where | What |
+|---|---|
+| Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are (or, when it sees none, why: no colours saved, a blob too big or cut off). Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put a cube on the table, tap it in the camera picture, name it, save (same name = measure it again); **Edit** removes colours |
+| Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
+| Collect | **Auto-collect**: teach ONE example in Train, set the base's two ends and a step (3/5/10°); the arm repeats that example at every step: puts the cube down, reads where it landed, picks it back up to check, saves it. One example fills one arc; **Sweep all** sweeps every ticked taught example in turn, so a straight line of 4–6 examples taught from the base outwards becomes a grid over the whole table. Only asks for OK to hand over or put back a lost cube. Dots on the camera show the covered spots |
+| Show | Exhibition mode: base window, playlist of patterns, rests, Start / Stop, counters; link to the `/show` big screen |
+| Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
+| Stop (red, bottom right) | Stops the task (or teaching's current move) and holds the arm where it is. Always there; `Esc` on a keyboard |
+| Camera (top right) | Tap to swap with the 3D view. Boxes and labels mark the cubes it sees, dashed boxes the coloured blobs it rejected and why, the cube being picked and where it goes, and an exhibition pattern's targets. Buttons: smaller / bigger, boxes on / off, 💧 colour mask (paints every pixel of each saved colour, to check a colour still matches), picture adjust (zoom, brightness, contrast, rotate, mirror; kept per browser) |
+| Live log (`>_`, bottom right) | Every ROS node's log (`/rosout`), live, green on black; warnings amber, errors red |
+| Settings | Account, **Devices** (arm and camera status, every USB serial device and camera; owners can pin the arm or camera to a port, switch to another camera or a stream URL, or reconnect, with no restart), theme, Reduce Transparency, Celebrations, people; Advanced: examples review, drop mode, raw servo values |
+| `/show` | The big screen for a TV: what the arm is doing in large type, counters, camera, 3D arm and live log |
+
+Only one person drives at a time; others see who is in control and can take
+over. Drag to orbit the 3D view, pinch or scroll to zoom, double-click to reset.
+Accounts are in `~/.ros/braccio_web.yaml` (salted password hashes; delete an
+entry to remove someone). After an update, a normal reload of the page is
+enough (the page is never cached). Port: `web_port:=8080` on the launch. For
+HTTPS on an untrusted network, run the dashboard on its own with
+`ros2 run unoq_braccio_driver web_dashboard --ros-args -p certfile:=... -p keyfile:=...`.
+
+## Exhibition mode
+
+For a show: the arm keeps moving cubes around the table on its own for
+hours, making one pattern after another from a **playlist**: *line up by colour*, *circle* (the cubes on one collected arc), *colour zones*, *swap* two cubes (through a free spot) and *shuffle*. The camera shows each pattern's targets as ghost squares, the big screen narrates ("Making a circle… 2 of 3 in place"), and a finished shape gets confetti and a wave, nod or dance. It rests between rounds so the servos cool down. Patterns only use known spots (taught or auto-collected examples), placing with each spot's own pose, so a dense grid from **Collect → Sweep all** makes the neatest shapes. In the web dashboard's **Show** tab:
+
+1. **Base window**: drive the base with − / + to the furthest it may turn one
+   way, **Set Left End**; the other way, **Set Right End**. The window shows
+   as a green wedge in the 3D view.
+2. Choose the patterns in the **playlist**, the rest (15 s – 2 min) and cubes
+   moved per shuffle, then **Start Exhibition**.
+3. Open **`http://<pi>:8000/show`** on a TV or monitor: a big screen with what
+   the arm is doing, cubes moved, success rate, the camera, the 3D arm and the
+   live log (sign in once, as a viewer).
+
+Cubes are only ever put down on **taught spots** (places where a cube really
+sat and the arm really picked it up), inside the base window, and at least two
+cube widths from any other cube, so they never land off the table or on each
+other. Teach spots across the whole area you want used (keep them away from
+the table edge), and keep the cubes inside it.
+
+It stops and shows **Needs a hand** (on the page and the big screen) when a
+cube goes missing (it carries on by itself once it sees them all again, or
+with fewer cubes after a few more looks), after 3 missed picks in a row, or
+when no free spot is left. Settings are in `~/.ros/braccio_exhibition.yaml`
+and are re-read every round. From a terminal:
+`ros2 run unoq_braccio_driver exhibition_demo --ros-args -p session:=<name>`.
 
 ## Raspberry Pi 5 (Ubuntu Server)
 
@@ -85,7 +182,7 @@ boards mid-run.
 
 6. **Flash the UNO** once, from the Pi or any PC: see [Real arm](#real-arm-arduino-uno).
 
-7. **Start everything:**
+7. **Start everything** ([the one command](#run-it-one-command)):
 
    ```bash
    ros2 launch unoq_braccio_bringup pi.launch.py
@@ -206,29 +303,21 @@ own supply, never from USB.
    bash scripts/setup_uno_serial.sh                  # then log out and back in
    ```
 
-3. **Check the arm moves** (bridge only, no camera):
-
-   ```bash
-   ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=/dev/braccio
-   ```
-
-   `serial_port:=auto` finds the UNO by its USB id instead (the Pi launch
-   does this by default); a port number like `/dev/ttyACM0` can change with
-   plug-in order.
-
+3. **Start it** with [the one command](#run-it-one-command) and check the
+   arm moves from the web page's **Move** tab (Home, gripper Open / Close).
    On power-up the arm stands straight up and waits about 8 s while the UNO
    resets and powers its servos gently. Wiring, serial protocol and
    troubleshooting: [docs/hardware.md](docs/hardware.md).
 
-## Teach the real arm to pick
+## How it learns to pick
 
 **Easiest: in the web dashboard.** Train tab → record a few examples with
-the on-screen buttons (same flow as below), then Collect tab → **Sweep all**:
+the on-screen buttons, then Collect tab → **Sweep all**:
 teach a straight line of 4–6 examples from the base outwards and the arm
 collects an arc of examples from each one by itself. Cube colours: Sort tab →
 **Add colour**, tap the cube in the camera picture. See
-[Web dashboard](#web-dashboard). The terminal tools below do the same and
-write the same sessions.
+[Web dashboard](#web-dashboard). The [terminal tools](#without-the-web-page-terminal-tools)
+do the same and write the same sessions.
 
 Each example stores what the camera saw (cube position and angle) and the
 servo angles you drove the arm to. The model blends the nearest examples
@@ -236,19 +325,49 @@ servo angles you drove the arm to. The model blends the nearest examples
 repeats what the real arm did. Every 5 examples it also tries polynomial and
 small neural-network models and keeps whichever predicts best.
 
-**1. Mount the camera** looking down at the table, so it sees the whole area
+**Mount the camera** looking down at the table, so it sees the whole area
 where cubes go. Do not move or zoom it afterwards (if you do, start a new
 session).
 
-**2. Start the arm and camera** (terminal 1; it includes `hardware.launch.py`,
-never run both):
+Tips that matter most:
+
+- **Spread the examples** over the whole area, about every 3-4 cm, with the
+  cube at different angles. 25-40 examples cover a desk-sized area.
+- **Reach each spot the same way.** Keep a similar posture (e.g. elbow high,
+  wrist tipped down) in neighbouring examples; two different postures for
+  the same spot get averaged into one that misses.
+- Every 5 examples it offers a **test**: put a cube anywhere, the arm picks on
+  its own (`s` stops it). If it misses, answer `y` to "Correct it?" and drive
+  it onto the cube: that becomes an example exactly where it was weakest.
+- Cubes more than 60 px from every example are refused, not guessed.
+
+**Review and clean up.** Train → **Review** (or Settings → Advanced → Examples review) lists examples whose angles disagree with their neighbours or whose camera reading wobbled, offers to delete them, and shows where tests missed so you know where to teach more.
+
+**Where sorted cubes go.** Either teach a drop spot per colour (Train → **Drop Spots**), or skip it: then cubes are dropped at the far end of the base rotation, reaching out as far as they were picked.
+
+## Without the web page (terminal tools)
+
+The web page does all of this; these are for SSH, scripting or debugging. They use the same sessions (`~/.ros/braccio_teach/<session>/`) and settings files as the web page.
+
+### Arm only (check it moves, no camera)
+
+```bash
+ros2 launch unoq_braccio_bringup hardware.launch.py serial_port:=auto     # or /dev/braccio, /dev/ttyACM0
+```
+
+The arm stands up and waits about 8 s while the UNO resets. Wiring and protocol: [docs/hardware.md](docs/hardware.md).
+
+### Teach in the terminal
+
+**Start the arm and camera** (terminal 1; it includes `hardware.launch.py`,
+never run both; `web:=true` adds the web page):
 
 ```bash
 ros2 launch unoq_braccio_bringup real.launch.py serial_port:=/dev/braccio \
   camera:=http://192.168.1.192:8080/video
 ```
 
-**3. Teach it your cube colours** (terminal 2). Put one cube under the camera,
+**Cube colours** (terminal 2). Put one cube under the camera,
 `s` saves its colour, next cube, `n` when done. Run it again any time to add a
 colour; the ones already saved are kept (`x` forgets them).
 
@@ -258,7 +377,7 @@ ros2 run unoq_braccio_driver real_setup --ros-args -p steps:=colors
 
 Restart terminal 1 after adding colours.
 
-**4. Record examples** (terminal 2):
+**Record examples** (terminal 2):
 
 ```bash
 ros2 run unoq_braccio_driver teach_pick --ros-args -p session:=new
@@ -278,33 +397,22 @@ roll, `o`/`c` gripper (`O` open, `C` grip), Tab switches 1/5 degree steps,
 Esc cancels the example. From the second example on, the arm starts at its own
 guess, so you only correct it.
 
-Tips that matter most:
-
-- **Spread the examples** over the whole area, about every 3-4 cm, with the
-  cube at different angles. 25-40 examples cover a desk-sized area.
-- **Reach each spot the same way.** Keep a similar posture (e.g. elbow high,
-  wrist tipped down) in neighbouring examples; two different postures for
-  the same spot get averaged into one that misses.
-- Every 5 examples it offers a **test**: put a cube anywhere, the arm picks on
-  its own (`s` stops it). If it misses, answer `y` to "Correct it?" and drive
-  it onto the cube: that becomes an example exactly where it was weakest.
-- Cubes more than 60 px from every example are refused, not guessed.
-
 Menu keys: Enter record · `T` test · `D` drop poses · `R` review · `U` undo
 last example · `Q` quit. Everything is saved in
 `~/.ros/braccio_teach/<session>/`; run the same session again to continue.
 
-**5. Review and clean up.** Press `R` in `teach_pick` (or, without the arm,
+**Review:** press `R` in `teach_pick` (or, without the arm,
 `python3 -m unoq_braccio_driver.pick_learning desk` from
 `ros2_ws/src/unoq_braccio_driver`). It lists examples whose angles disagree
 with their neighbours or whose camera reading wobbled, offers to delete them,
 and shows where tests missed so you know where to teach more.
 
-**6. Where cubes go.** Either teach a drop pose per colour (`D` in
-`teach_pick`), or skip it: then cubes are dropped at the far end of the base
+**Drop poses:** `D` in `teach_pick` teaches one per colour; without them: then cubes are dropped at the far end of the base
 rotation (`l` key direction), reaching out as far as they were picked.
 
-**7. Run it** (terminal 2, with terminal 1 still running):
+### Sort in the terminal
+
+**Sort** (terminal 2, with terminal 1 still running):
 
 ```bash
 # every colour, until no cube it can pick is left
@@ -325,9 +433,6 @@ checked with the camera; a cube is tried twice before it is left. Ctrl+C
 freezes the arm. Watch it with `ros2 topic echo /task/state`.
 
 ### Live demo: copy and paste
-
-On the Raspberry Pi, `pi.launch.py` and the web dashboard's **Sort** tab do
-all of this (pick colours, Start). From terminals on a PC:
 
 Terminal 1, the arm and camera (keep it running; `web:=true` also starts the
 [web dashboard](#web-dashboard)):
@@ -366,73 +471,17 @@ Before kNN, the real arm used a measured camera and inverse kinematics
 works and is described in [docs/camera.md](docs/camera.md), but it needs
 careful calibration and missed more often.
 
-## Web dashboard
+### Other launch files
 
-Watch and control the arm from any phone, tablet or computer on the same
-network: a live 3D model of the arm (the same URDF and transforms RViz uses),
-the overhead camera, what the arm is doing, and the controls. It works with
-the real arm and with the simulation.
-
-```bash
-ros2 launch unoq_braccio_bringup pi.launch.py                   # Raspberry Pi: always on
-ros2 launch unoq_braccio_bringup real.launch.py ... web:=true   # with the real arm
-ros2 launch unoq_braccio_bringup sim.launch.py web:=true        # with Gazebo
-ros2 run unoq_braccio_driver web_dashboard                      # or on its own, next to either
-```
-
-The terminal prints the address (e.g. `http://192.168.1.31:8000`) and, the
-first time, a **pairing code**: open the address, enter the code and choose a
-name and password. That makes you the owner. Invite others in Settings →
-**Show Pairing Code**: each code works once, for 10 minutes, as an
-**operator** (can control), **viewer** (can only watch) or **owner** (can also
-invite people and see Advanced).
-
-| Where | What |
+| Launch | What |
 |---|---|
-| Sort | **On the table**: the cubes the camera sees right now, per colour, and whether the model has been taught where they are (or, when it sees none, why: no colours saved, a blob too big or cut off). Pick colours (or All), drop at their spot or to the side, Start. Shows each step live, the cubes placed and a counter. **Add colour**: put a cube on the table, tap it in the camera picture, name it, save (same name = measure it again); **Edit** removes colours |
-| Train | Teach the arm from the browser, the same flow and sessions as `teach_pick`: pick or create a session, **Record Example** (Above → Grab → Close → Check, driving with the on-screen +/− buttons), **Test Me**, drop spots, review, undo. Shows the "model race" (each candidate's error) and lets you choose the model Sort uses |
-| Collect | **Auto-collect**: teach ONE example in Train, set the base's two ends and a step (3/5/10°); the arm repeats that example at every step: puts the cube down, reads where it landed, picks it back up to check, saves it. One example fills one arc; **Sweep all** sweeps every ticked taught example in turn, so a straight line of 4–6 examples taught from the base outwards becomes a grid over the whole table. Only asks for OK to hand over or put back a lost cube. Dots on the camera show the covered spots |
-| Show | Exhibition mode: base window, playlist of patterns, rests, Start / Stop, counters; link to the `/show` big screen |
-| Move | Gripper open / close, Home and other poses; Joints (folded away) has a slider per servo |
-| Stop (red, bottom right) | Stops the task (or teaching's current move) and holds the arm where it is. Always there; `Esc` on a keyboard |
-| Camera (top right) | Tap to swap with the 3D view. Boxes and labels mark the cubes it sees, dashed boxes the coloured blobs it rejected and why, the cube being picked and where it goes, and an exhibition pattern's targets. Buttons: smaller / bigger, boxes on / off, 💧 colour mask (paints every pixel of each saved colour, to check a colour still matches), picture adjust (zoom, brightness, contrast, rotate, mirror; kept per browser) |
-| Live log (`>_`, bottom right) | Every ROS node's log (`/rosout`), live, green on black; warnings amber, errors red |
-| Settings | Account, **Devices** (arm and camera status, every USB serial device and camera; owners can pin the arm or camera to a port, switch to another camera or a stream URL, or reconnect, with no restart), theme, Reduce Transparency, Celebrations, people; Advanced: examples review, drop mode, raw servo values |
-| `/show` | The big screen for a TV: what the arm is doing in large type, counters, camera, 3D arm and live log |
-
-Only one person drives at a time; others see who is in control and can take
-over. Drag to orbit the 3D view, pinch or scroll to zoom, double-click to reset.
-Accounts are in `~/.ros/braccio_web.yaml` (salted password hashes; delete an
-entry to remove someone). After an update, a normal reload of the page is
-enough (the page is never cached). Options: `-p port:=8000`, and
-`-p certfile:=... -p keyfile:=...` for HTTPS if the network is not trusted.
-
-## Exhibition mode
-
-For a show: the arm keeps moving cubes around the table on its own for
-hours, making one pattern after another from a **playlist**: *line up by colour*, *circle* (the cubes on one collected arc), *colour zones*, *swap* two cubes (through a free spot) and *shuffle*. The camera shows each pattern's targets as ghost squares, the big screen narrates ("Making a circle… 2 of 3 in place"), and a finished shape gets confetti and a wave, nod or dance. It rests between rounds so the servos cool down. Patterns only use known spots (taught or auto-collected examples), placing with each spot's own pose, so a dense grid from **Collect → Sweep all** makes the neatest shapes. In the web dashboard's **Show** tab:
-
-1. **Base window**: drive the base with − / + to the furthest it may turn one
-   way, **Set Left End**; the other way, **Set Right End**. The window shows
-   as a green wedge in the 3D view.
-2. Choose the patterns in the **playlist**, the rest (15 s – 2 min) and cubes
-   moved per shuffle, then **Start Exhibition**.
-3. Open **`http://<pi>:8000/show`** on a TV or monitor: a big screen with what
-   the arm is doing, cubes moved, success rate, the camera, the 3D arm and the
-   live log (sign in once, as a viewer).
-
-Cubes are only ever put down on **taught spots** (places where a cube really
-sat and the arm really picked it up), inside the base window, and at least two
-cube widths from any other cube, so they never land off the table or on each
-other. Teach spots across the whole area you want used (keep them away from
-the table edge), and keep the cubes inside it.
-
-It stops and shows **Needs a hand** (on the page and the big screen) when a
-cube goes missing (it carries on by itself once it sees them all again, or
-with fewer cubes after a few more looks), after 3 missed picks in a row, or
-when no free spot is left. Settings are in `~/.ros/braccio_exhibition.yaml`
-and are re-read every round. From a terminal:
-`ros2 run unoq_braccio_driver exhibition_demo --ros-args -p session:=<name>`.
+| `pi.launch.py` | **The one to use**: real arm + camera + web page ([Run it](#run-it-one-command)) |
+| `real.launch.py` | The same pieces with every option (`camera:=`, `serial_port:=`, `web:=true`, `rviz:=`, `detector_backend:=` …); `pi.launch.py` is this with good defaults |
+| `hardware.launch.py` | Arm only (serial bridge + 3D model) |
+| `sim.launch.py` | Gazebo simulation (`web:=true` for the web page) |
+| `learned_pick_place.launch.py` | Sort with a taught model, from a terminal |
+| `manual_control.launch.py`, `joint_state_publisher_gui.launch.py` | Drive the joints by keyboard, joystick or sliders |
+| `real_pick_place.launch.py`, `vision_*.launch.py`, `edge_impulse_*.launch.py`, `data_capture.launch.py`, `remote.launch.py` | Older set-ups: measured camera + IK, Edge Impulse, the UNO Q |
 
 ## Move the arm
 
