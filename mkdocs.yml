@@ -1,0 +1,67 @@
+site_name: Braccio + ROS 2 build guide
+site_description: Rebuild the Braccio cube-sorting arm from an empty folder, one objective at a time.
+docs_dir: build-guide/docs
+site_dir: build-guide/site
+hooks:
+  - build-guide/hooks/code.py
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - content.code.annotate
+    - navigation.footer
+    - navigation.indexes
+    - navigation.top
+    - toc.follow
+    - search.highlight
+  palette:
+    - scheme: slate
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-sunny
+        name: Light mode
+    - scheme: default
+      primary: teal
+      accent: amber
+      toggle:
+        icon: material/weather-night
+        name: Dark mode
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - md_in_html
+  - pymdownx.details
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+  - pymdownx.inlinehilite
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - toc:
+      permalink: true
+
+nav:
+  - Start here: index.md
+  - 1. Workspace and packages: 01-workspace.md
+  - 2. Move the servos (UNO firmware): 02-firmware.md
+  - 3. Speak the protocol from Python: 03-protocol.md
+  - 4. A ROS node owns the arm: 04-serial-bridge.md
+  - 5. Describe and launch the arm: 05-arm-model.md
+  - 6. See the table: 06-camera.md
+  - 7. Find the cubes: 07-find-cubes.md
+  - 8. Learn picks from examples: 08-learning.md
+  - 9. Teach the arm: 09-teaching.md
+  - 10. Sort the cubes: 10-sorting.md
+  - 11. One launch for everything: 11-launch.md
+  - 12. Web dashboard: 12-web-dashboard.md
+  - 13. Exhibition mode: 13-exhibition.md

@@ -24,3 +24,6 @@ learn_from/
 
 # Archify working files
 .archify/
+
+# Build guide output (python -m mkdocs build)
+build-guide/site/
