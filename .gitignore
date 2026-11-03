@@ -18,3 +18,6 @@ edge_impulse/model/
 *.tflite
 test/output/
 test/.venv/
+
+# Local reference checkouts (not part of this repo)
+learn_from/

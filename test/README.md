@@ -9,6 +9,7 @@ ROS.
 | File | Purpose |
 | --- | --- |
 | `detect.py` | The test script |
+| `images/` | Test images (`test1.jpg`, `test2.jpg`) |
 | `requirements.txt` | Python packages (`ai-edge-litert`, `numpy`, `opencv-python`) |
 | `output/` | Annotated images written by `--save` / `--no-show` (git-ignored) |
 
@@ -18,7 +19,7 @@ the repository root, in that order:
 - the model files: `*float32*.lite` and `*int8*.lite`
 - the test images: `test1.jpg` and `test2.jpg`
 
-So leaving them in the repository root works, and so does moving them here.
+The two test images live in `test/images/`.
 
 ## 1. Set up Python
 

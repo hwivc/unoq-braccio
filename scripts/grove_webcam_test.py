@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """Use a Grove Vision AI V2 as a plain webcam and show it in a window.
 
-    python ROS2_test.py                         # auto-detect the board
-    python ROS2_test.py --port /dev/ttyACM0     # or COM5 on Windows
-    python ROS2_test.py --resolution 2          # 640x480 (slower)
+    python scripts/grove_webcam_test.py                         # auto-detect the board
+    python scripts/grove_webcam_test.py --port /dev/ttyACM0     # or COM5 on Windows
+    python scripts/grove_webcam_test.py --resolution 2          # 640x480 (slower)
 
 No model, no ROS 2 - just frames from the camera on the board, pulled over
 USB serial with AT+SAMPLE. Press q or Esc in the window to quit.

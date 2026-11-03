@@ -1,7 +1,7 @@
 # Platform Setup
 
 **Raspberry Pi 5:** use Ubuntu Server 24.04 and follow the
-[Raspberry Pi section of the README](../README.md#raspberry-pi-5-ubuntu-server)
+[Raspberry Pi 5 setup guide](raspberry-pi.md)
 (a lighter install than below: no desktop, RViz or Gazebo). Raspberry Pi OS
 has no ROS 2 Jazzy packages.
 
