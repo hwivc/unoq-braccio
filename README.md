@@ -30,6 +30,17 @@ controlled from a web page.
 - **Plug and play**: finds the UNO and camera by USB id and reconnects when
   they're re-plugged.
 
+## Architecture
+
+<p align="center">
+  <img src="docs/architecture.png" width="900" alt="Architecture: browser to web dashboard, serial bridge and Arduino UNO, with camera, cube detector, task runners and saved sessions on the Raspberry Pi">
+</p>
+
+`pi.launch.py` runs everything inside the box on the Pi. The web dashboard
+sends joint commands to the serial bridge, which drives the UNO over USB, and
+starts the sort and exhibition task runners. An interactive version is in
+[`docs/architecture.html`](docs/architecture.html): download it and open it in a browser.
+
 ## Hardware
 
 - TinkerKit Braccio with its shield on an Arduino UNO R3 (R4 Minima/WiFi also work)

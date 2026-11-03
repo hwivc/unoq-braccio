@@ -21,3 +21,6 @@ test/.venv/
 
 # Local reference checkouts (not part of this repo)
 learn_from/
+
+# Archify working files
+.archify/
