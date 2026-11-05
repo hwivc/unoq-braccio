@@ -74,12 +74,21 @@ And this is where we end up. Every box is a chapter:
 
 ## Serving this guide
 
-From the original repo folder:
+On Ubuntu 24.04:
 
 ```bash
-pip install mkdocs-material
-python -m mkdocs serve
+# 1. Install MkDocs (open a new terminal after this step)
+sudo apt install pipx
+pipx ensurepath
+pipx install mkdocs-material --include-deps
+
+# 2. Get this branch
+git clone -b build-guide https://github.com/hwivc/unoq-braccio.git
+cd unoq-braccio
+
+# 3. Run the guide
+mkdocs serve
 ```
 
-Then open <http://127.0.0.1:8000>. The code blocks are read live from the
+Then open <http://127.0.0.1:8000>. Press `Ctrl+C` to stop. The code blocks are read live from the
 repo, so they always match the files.
