@@ -10,6 +10,27 @@ model (kNN) maps camera readings straight to servo angles, so no camera or arm
 calibration is needed. Everything runs headless on a Raspberry Pi 5 and is
 controlled from a web page.
 
+## Build guide
+
+This branch adds a step-by-step guide to rebuilding the project. To read it
+locally on Ubuntu 24.04:
+
+```bash
+# 1. Install MkDocs (open a new terminal after this step)
+sudo apt install pipx
+pipx ensurepath
+pipx install mkdocs-material --include-deps
+
+# 2. Get this branch
+git clone -b build-guide https://github.com/hwivc/unoq-braccio.git
+cd unoq-braccio
+
+# 3. Run the guide
+mkdocs serve
+```
+
+Then open <http://127.0.0.1:8000>. Press `Ctrl+C` to stop.
+
 <p align="center">
   <img src="docs/braccio.gif" width="800" alt="Braccio demo">
 </p>
