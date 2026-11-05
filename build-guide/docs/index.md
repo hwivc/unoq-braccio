@@ -45,9 +45,15 @@ And this is where we end up. Every box is a chapter:
     === "Raspberry Pi / Linux"
 
         ```bash
-        ORIG=~/unoq-braccio            # the original repo
-        NEW=~/braccio-rebuild          # yours, built from scratch
+        # Saved in ~/.bashrc so every new terminal has them
+        echo 'export ORIG=~/unoq-braccio' >> ~/.bashrc       # the original repo
+        echo 'export NEW=~/braccio-rebuild' >> ~/.bashrc     # yours, built from scratch
+        source ~/.bashrc
+        echo "$NEW"                                          # must print a path
         ```
+
+        Chapter 1 creates `~/braccio-rebuild`. Don't point `NEW` at an existing
+        folder such as `~/ros2_ws`.
 
     === "Windows (PowerShell)"
 

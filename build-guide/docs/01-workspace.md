@@ -21,15 +21,25 @@ without touching the code that runs.
 
 ## Create
 
+Make a new folder first, then put the workspace inside it. Don't use an existing
+workspace such as `~/ros2_ws`, or these packages will land among your other
+projects.
+
 ```bash
-mkdir -p $NEW/ros2_ws/src && cd $NEW && git init
-cd ros2_ws/src
+# A new folder for this project, with the workspace inside it
+NEW=~/braccio-rebuild
+mkdir -p $NEW/ros2_ws/src $NEW/firmware/braccio_uno_firmware
+cd $NEW
+git init -b main
+printf 'build/\ninstall/\nlog/\n__pycache__/\n*.pyc\n' > .gitignore
+
+# The three packages
+cd $NEW/ros2_ws/src
 ros2 pkg create --build-type ament_python unoq_braccio_driver \
     --dependencies rclpy sensor_msgs std_msgs
 ros2 pkg create --build-type ament_python unoq_braccio_bringup
 ros2 pkg create --build-type ament_cmake unoq_braccio_sim
 rm -rf unoq_braccio_sim/include unoq_braccio_sim/src     # the sim package holds no C++
-mkdir -p $NEW/firmware/braccio_uno_firmware
 ```
 
 ## The code
