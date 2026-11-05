@@ -124,7 +124,7 @@ land in one spot, so keep it clear.
 
 | Launch | What |
 |---|---|
-| `pi.launch.py` | **The one to use**: real arm + camera + web page ([Run it](../README.md#quick-start)) |
+| `pi.launch.py` | **The one to use**: real arm + camera + web page ([Run it](https://github.com/hwivc/unoq-braccio/blob/main/README.md#quick-start)) |
 | `real.launch.py` | The same pieces with every option (`camera:=`, `serial_port:=`, `web:=true`, `rviz:=`, `detector_backend:=` …); `pi.launch.py` is this with good defaults |
 | `hardware.launch.py` | Arm only (serial bridge + 3D model) |
 | `sim.launch.py` | Gazebo simulation (`web:=true` for the web page) |

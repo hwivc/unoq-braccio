@@ -1,0 +1,37 @@
+site_name: Arduino Braccio + ROS 2
+repo_url: https://github.com/hwivc/unoq-braccio
+edit_uri: edit/main/docs/
+# Keep raw <img src="web/x.jpg"> paths valid in both MkDocs and GitHub's viewer
+use_directory_urls: false
+
+theme:
+  name: material
+  features:
+    - content.code.copy
+    - navigation.sections
+
+markdown_extensions:
+  - admonition
+  - attr_list
+  - tables
+  - toc:
+      permalink: true
+  - pymdownx.highlight
+  - pymdownx.superfences
+
+nav:
+  - Home: index.md
+  - Setup:
+      - Raspberry Pi 5: raspberry-pi.md
+      - Windows / macOS / Linux: platform-setup.md
+      - Hardware: hardware.md
+      - Camera: camera.md
+  - Usage:
+      - Web dashboard: web-dashboard.md
+      - Manual control: manual_control.md
+      - Terminal tools: terminal-tools.md
+      - Vision: vision.md
+  - Plans:
+      - Roadmap: roadmap.md
+      - Learning roadmap: learning_roadmap.md
+      - Two-arm system: two_arm_braccio_system_architecture.md

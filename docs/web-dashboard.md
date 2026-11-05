@@ -5,7 +5,7 @@ network: a live 3D model of the arm (the same URDF and transforms RViz uses),
 the overhead camera, what the arm is doing, and the controls. It works with
 the real arm and with the simulation.
 
-Start it with [the one command](../README.md#quick-start) (or `sim.launch.py web:=true`).
+Start it with [the one command](https://github.com/hwivc/unoq-braccio/blob/main/README.md#quick-start) (or `sim.launch.py web:=true`).
 
 | | |
 |---|---|

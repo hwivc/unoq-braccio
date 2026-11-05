@@ -24,3 +24,6 @@ learn_from/
 
 # Archify working files
 .archify/
+
+# MkDocs build output
+site/

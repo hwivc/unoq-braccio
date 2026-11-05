@@ -120,7 +120,7 @@ bash ~/unoq-braccio/scripts/flash_uno.sh /dev/braccio
 The first time it downloads the Arduino AVR tools (a few minutes). For an
 UNO R4 Minima add the board name:
 `bash ~/unoq-braccio/scripts/flash_uno.sh /dev/braccio arduino:renesas_uno:minima`.
-You can flash from a PC instead (see [Real arm](../README.md#real-arm)).
+You can flash from a PC instead (see [Real arm](https://github.com/hwivc/unoq-braccio/blob/main/README.md#real-arm)).
 
 ## 7. Check the boards
 
@@ -138,7 +138,7 @@ ls /dev/video*                         # a USB webcam, if you use one
 ros2 launch unoq_braccio_bringup pi.launch.py
 ```
 
-This is [the one command](../README.md#quick-start): arm, camera, cube detection
+This is [the one command](https://github.com/hwivc/unoq-braccio/blob/main/README.md#quick-start): arm, camera, cube detection
 and the web dashboard. After about 10 s the arm stands up and the terminal
 prints the address. Open **`http://braccio.local:8000`** (or the printed
 address) on a phone or laptop on the same network and enter the **pairing
