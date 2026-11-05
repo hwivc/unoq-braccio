@@ -114,7 +114,7 @@ Clone and build:
 ```bash
 mkdir -p ~/git
 cd ~/git
-git clone git@github.com:eoinjordan/unoq-braccio.git
+git clone git@github.com:hwivc/unoq-braccio.git
 cd unoq-braccio/ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install
@@ -412,7 +412,7 @@ missing.
 This shell prompt is not a valid ROS 2 build environment for the setup steps:
 
 ```text
-home:/mnt/host/c/Users/Eoin/git/unoq-braccio#
+home:/mnt/host/c/Users/Tambu/git/unoq-braccio#
 ```
 
 In that shell, commands such as `sudo apt update`, `rosdep update`, and
@@ -428,7 +428,7 @@ run `cd ros2_ws` again.
 Correct sequence from the repo root:
 
 ```bash
-cd /mnt/c/Users/Eoin/git/unoq-braccio
+cd /mnt/c/Users/Tambu/git/unoq-braccio
 cd ros2_ws
 rosdep install --from-paths src --ignore-src -r -y
 colcon build --symlink-install

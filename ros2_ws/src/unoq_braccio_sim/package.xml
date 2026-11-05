@@ -3,7 +3,7 @@
   <name>unoq_braccio_sim</name>
   <version>0.1.0</version>
   <description>Gazebo simulation assets for UNO Q Braccio.</description>
-  <maintainer email="eoin@example.com">Eoin Jordan</maintainer>
+  <maintainer email="tambu@example.com">Tambu Precious</maintainer>
   <license>MIT</license>
 
   <buildtool_depend>ament_cmake</buildtool_depend>
