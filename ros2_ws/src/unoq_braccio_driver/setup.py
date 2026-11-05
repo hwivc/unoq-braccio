@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=["setuptools", "pyserial", "PyYAML"],
     zip_safe=True,
-    maintainer="Eoin Jordan",
-    maintainer_email="eoin@example.com",
+    maintainer="Tambu Precious",
+    maintainer_email="tambu@example.com",
     description="Arduino UNO serial bridge, vision, teaching and web dashboard for the Braccio.",
     license="MIT",
     entry_points={

@@ -15,8 +15,8 @@ setup(
     ],
     install_requires=["setuptools"],
     zip_safe=True,
-    maintainer="Eoin Jordan",
-    maintainer_email="eoin@example.com",
+    maintainer="Tambu Precious",
+    maintainer_email="tambu@example.com",
     description="Launch files for UNO Q Braccio.",
     license="MIT",
 )

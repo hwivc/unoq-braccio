@@ -3,7 +3,7 @@
   <name>unoq_braccio_bringup</name>
   <version>0.1.0</version>
   <description>Launch files for UNO Q Braccio hardware and simulation.</description>
-  <maintainer email="eoin@example.com">Eoin Jordan</maintainer>
+  <maintainer email="tambu@example.com">Tambu Precious</maintainer>
   <license>MIT</license>
 
   <exec_depend>launch</exec_depend>
